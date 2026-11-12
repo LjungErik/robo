@@ -10,6 +10,8 @@ Pieces, each replaceable on its own:
     idle.py           GNOME Mutter idle monitor (D-Bus)    -> IdleMonitor
     instance.py       lock file                            -> single instance
     settings_window.py the themed settings window          -> open_settings()
+    voice.py          espeak-ng + robot filter + pw-play     -> SpeechOutput
+    listen.py         Vosk helper process (stt_worker.py)    -> SpeechInput
 """
 import os
 
@@ -47,6 +49,27 @@ class LinuxPlatform(Platform):
     def acquire_single_instance(self):
         from .instance import acquire_lock
         return acquire_lock()
+
+    def speech_output(self):
+        from .voice import create_voice
+        return create_voice()
+
+    def speech_input(self):
+        from .listen import VoskEars
+        return VoskEars()
+
+    def battery_percent(self):
+        import glob
+        for bat in sorted(glob.glob('/sys/class/power_supply/BAT*')):
+            try:
+                with open(os.path.join(bat, 'capacity')) as f:
+                    pct = int(f.read().strip())
+                with open(os.path.join(bat, 'status')) as f:
+                    status = f.read().strip()
+            except (OSError, ValueError):
+                continue
+            return pct, status in ('Charging', 'Full', 'Not charging')
+        return None
 
     def config_dir(self):
         base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')

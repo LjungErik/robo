@@ -9,6 +9,7 @@ import logging
 import sys
 
 from robo.config import Settings
+from robo.conversation import RuleBrain
 from robo.core.companion import Companion
 from robo.platform import load_platform
 from robo.settings_store import SettingsStore
@@ -75,6 +76,11 @@ class RoboApp:
         for source in self.sources:
             source.start(self.robot.handle_event)
 
+        # Conversation: swap RuleBrain for an LLM-backed Brain here later.
+        self.robot.conversation.battery = platform.battery_percent
+        self.robot.conversation.attach(RuleBrain(), voice=platform.speech_output(),
+                                       ears=platform.speech_input())
+
         idle = platform.idle_monitor()     # always on, so evil mode can be switched on live
         if idle is not None:
             self.robot.evil.is_inhibited = idle.is_inhibited
@@ -129,8 +135,11 @@ def main(argv=None):
     store = SettingsStore(platform.config_dir())
     settings = store.load().with_changes(**overrides)
     _set_log_level(settings)
-    RoboApp(settings, platform, store)
-    platform.scheduler.run()
+    app = RoboApp(settings, platform, store)
+    try:
+        platform.scheduler.run()
+    finally:
+        app.robot.conversation.shutdown()   # close the microphone helper
     return 0
 
 

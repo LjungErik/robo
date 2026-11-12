@@ -164,6 +164,15 @@ def _eye(cr, ex, ey, mood, openness, eye):
         circle(cr, ex - 2, ey - 2.2, 1.8)
         cr.set_source_rgba(1, 1, 1, 0.9)
         cr.fill()
+    elif mood == 'sad':                    # droopy eyes looking down
+        h = max(1.6, 9 * openness)
+        rrect(cr, ex - 4.5, ey - h / 2 + 2.5, 9, h, h / 2)
+        cr.fill()
+        side = -1 if ex < 0 else 1
+        cr.move_to(ex - side * 5, ey - 7)    # worried brows (inner end up)
+        cr.line_to(ex + side * 4, ey - 4.5)
+        cr.set_line_width(2.2)
+        cr.stroke()
     else:
         if mood == 'focus':                # concentrating: half closed
             openness *= 0.45
@@ -176,9 +185,9 @@ def _eye(cr, ex, ey, mood, openness, eye):
             cr.fill()
 
 
-def _mouth(cr, mx, my, mood, eye, screen, t):
+def _mouth(cr, mx, my, mood, eye, screen, t, talk=0.0):
     if mood in ('evil', 'laugh'):
-        o = 3.5 + (abs(math.sin(t * 18)) * 3 if mood == 'laugh' else 0)
+        o = 3.5 + (abs(math.sin(t * 18)) * 3 if mood == 'laugh' else 0) + talk * 4
         cr.move_to(mx - 12, my - 5)
         cr.curve_to(mx - 6, my + o, mx + 6, my + o, mx + 12, my - 5)
         cr.curve_to(mx + 5, my - 1, mx - 5, my - 1, mx - 12, my - 5)
@@ -197,6 +206,15 @@ def _mouth(cr, mx, my, mood, eye, screen, t):
     cr.set_source_rgba(*eye)
     cr.set_line_width(2.3)
     cr.new_path()
+    if talk > 0.06 and mood not in ('roar', 'sleep'):   # talking: mouth follows his voice
+        w = 4.2 if mood != 'sad' else 3.6
+        ellipse(cr, mx, my - 1.5, w + talk * 1.5, 0.9 + talk * 4.6)
+        cr.fill()
+        return
+    if mood == 'sad':                      # little frown
+        cr.arc(mx, my + 1, 4, math.pi * 1.15, math.pi * 1.85)
+        cr.stroke()
+        return
     if mood == 'roar':                     # big open shout
         o = 7 + abs(math.sin(t * 22)) * 1.5
         cr.move_to(mx - 8, my - 4)
@@ -413,7 +431,7 @@ def draw_robot(cr, p):
             ellipse(cr, cx + look * 0.5, -76, 4.2, 2.6)
             cr.set_source_rgba(CHEEK[0], CHEEK[1], CHEEK[2], cheek_a)
             cr.fill()
-    _mouth(cr, look * 0.6, -75, mood, eye, screen, t)
+    _mouth(cr, look * 0.6, -75, mood, eye, screen, t, p.talk)
 
     if glitch > 0:   # scanline noise on the face screen
         cr.save()

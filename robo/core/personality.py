@@ -172,6 +172,52 @@ def on_settings_applied(robot, now):
     robot.body.hop(now)
 
 
+# ---------------------------------------------------------------- conversations
+def on_conversation_started(robot, now):
+    body = robot.body
+    if body.wake(now):
+        robot.face.show(F.SURPRISED, now, 0.5)
+    body.stop(now)
+    robot.wardrobe.stop_move()
+    body.hop(now)
+
+
+def on_reply(robot, reply, now):
+    """Do what the brain's Reply asks for, as he starts saying it."""
+    face, body, wardrobe = robot.face, robot.body, robot.wardrobe
+    body.stop(now, 30, 40)                 # stand still while chatting
+    action = reply.action
+    if action == 'wave':
+        face.show(F.WAVE, now, 2.2)
+    elif action == 'cheer':
+        face.show(F.ARMS_UP, now, 1.4)
+        body.hop(now)
+    elif action == 'hearts':
+        face.add_hearts(now, (0.2, 0.5, 0.8))
+    elif action == 'laugh':
+        face.show(F.LAUGH, now, 2.0)
+        body.hop(now)
+    elif action == 'dance':
+        if wardrobe.current:
+            wardrobe.start_move(now)
+        else:
+            face.show(F.ARMS_UP, now, 3.0)   # happy dance with his arms in the air
+            body.hop(now)
+            face.add_hearts(now, (0.5, 1.5))
+    elif action == 'dress_up' and reply.action_arg:
+        wardrobe.dress_up(now, reply.action_arg)
+    elif action == 'undress':
+        robot.bubbles.discard(DEMAND_ICONS, now)
+        wardrobe.undress(now)
+
+
+def on_conversation_ended(robot, last_reply, now):
+    if last_reply is not None and last_reply.action == 'nap':
+        robot.body.sleep(now, robot.rng.uniform(40, 70))
+    else:
+        robot.body.rest(now, 3, 6)
+
+
 def walk_speed(robot):
     speed = robot.settings.walk_speed
     if robot.evil.active:

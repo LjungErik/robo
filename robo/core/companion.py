@@ -23,11 +23,13 @@ from .characters import CHARACTERS
 from .effects import Effects
 from .face import WAVE, Face
 from .pose import build_pose
+from .talk import Conversation
 from .wardrobe import Wardrobe
 
 log = logging.getLogger(__name__)
 
 DRAG_THRESHOLD = 6          # px of movement before a press becomes a drag
+DOUBLE_CLICK_SECONDS = 0.35 # a second click within this starts a conversation
 SCREEN_CHECK_SECONDS = 5    # how often to re-read the work area / re-raise
 
 
@@ -46,12 +48,14 @@ class Companion:
         self.wardrobe = Wardrobe(settings.effective_dress_up_every, now, self.rng,
                                  allowed=settings.characters)
         self.effects = Effects(self.rng)
+        self.conversation = Conversation(self)
         self.body = None            # created in attach(), once we know the screen
         self.bounds = None
         self.host: WindowHost = None
         self.on_quit = lambda: None
         self.on_open_settings = None      # set by the app if the platform has a settings window
         self._press = None
+        self._pending_click = None    # time of a click that may become a double-click
         self._last_pos = None
         self._last_bubble_visible = None
         self._next_screen_check = 0.0
@@ -83,6 +87,7 @@ class Companion:
         if self.evil.set_after(settings.effective_evil_after, now) == 'good':
             personality.on_turned_good(self, now)
         self.wardrobe.configure(settings.effective_dress_up_every, settings.characters, now)
+        self.conversation.configure(settings)
         self._sync_window()
         personality.on_settings_applied(self, now)
 
@@ -133,7 +138,7 @@ class Companion:
         self.evil.update(dt)
 
         happened = self.body.update(now, dt, self.bounds, personality.walk_speed(self))
-        if happened == 'ready' and not self.bubbles.busy:
+        if happened == 'ready' and not self.bubbles.busy and not self.conversation.active:
             personality.next_action(self, now)
         elif happened == 'landed':
             personality.on_landed(self, now)
@@ -145,6 +150,10 @@ class Companion:
             personality.on_bubble_shown(self, shown, now)
 
         self._update_costume(now, dt)
+        self.conversation.update(now)
+        if self._pending_click is not None and now - self._pending_click > DOUBLE_CLICK_SECONDS:
+            self._pending_click = None
+            self._single_click(now)
 
         self._sync_window()
         self.host.redraw()
@@ -209,14 +218,30 @@ class Companion:
         p, self._press = self._press, None
         if self.body.state == 'drag':
             self.body.drop(now, self.bounds)
-        elif p['in_bubble']:
+        elif p['in_bubble'] and not self.conversation.active:
             self.bubbles.dismiss(now)
+        elif self._pending_click is not None:          # second click: let's talk!
+            self._pending_click = None
+            self.talk()
+        else:
+            self._pending_click = now                  # wait: maybe a double-click
+
+    def _single_click(self, now):
+        if self.conversation.active:
+            self.conversation.stop()                   # shh
         elif self.wardrobe.current and not self.wardrobe.changing(now):
             personality.on_costume_clicked(self, now)
         elif self.bubbles.visible:
             self.bubbles.dismiss(now)
         else:
             personality.on_pat(self, now)
+
+    def talk(self):
+        """Start a conversation (or end the current one)."""
+        if self.conversation.active:
+            self.conversation.stop()
+        else:
+            self.conversation.start()
 
     # ------------------------------------------------------------ menu
     def menu_items(self):
@@ -231,6 +256,10 @@ class Companion:
                                   lambda: personality.on_costume_clicked(self, now())))
         else:
             items.append(MenuItem('🎭  Dress up', self.dress_up))
+        if self.conversation.active:
+            items.append(MenuItem('🤐  Stop talking', self.conversation.stop))
+        else:
+            items.append(MenuItem('🎤  Talk to me', self.talk))
         if self.on_open_settings:
             items.append(MenuItem('⚙️  Settings…', self.on_open_settings))
         items += [MenuItem('🎨  Show all icons', self.demo),

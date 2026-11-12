@@ -133,6 +133,67 @@ class IdleMonitor(ABC):
         return False
 
 
+# ---------------------------------------------------------------- voice
+@dataclass
+class Utterance:
+    """Something the robot is saying. `envelope` is the loudness (0..1) of
+    the audio for every `frame_seconds`, used to move his mouth."""
+    text: str
+    envelope: List[float]
+    frame_seconds: float
+    duration: float
+    started_at: float = 0.0       # set by the core when playback starts
+
+
+class SpeechOutput(ABC):
+    """Text to speech in Robo's voice."""
+    available = True
+
+    def configure(self, settings: Settings) -> None:
+        """Pitch, speed, volume and effect settings changed."""
+
+    @abstractmethod
+    def say(self, text: str, on_started: Callable[[Utterance], None],
+            on_done: Callable[[], None]) -> None:
+        """Speak `text` without blocking. Call on_started(utterance) when the
+        audio starts and on_done() when it has finished (or was stopped),
+        both on the main thread."""
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Stop talking right now (on_done is still called)."""
+
+    def update(self, now: float) -> None:
+        """Called every frame; for implementations without real audio."""
+
+
+class SpeechInput(ABC):
+    """Speech recognition. All callbacks must run on the main thread."""
+    available = True
+    unavailable_reason = ''
+
+    @abstractmethod
+    def listen(self, timeout: float, on_heard: Callable[[str], None],
+               on_silence: Callable[[], None],
+               on_partial: Optional[Callable[[str], None]] = None) -> None:
+        """Listen for one sentence. on_heard(text) when the user finished
+        speaking; on_silence() if nothing was said within `timeout` seconds."""
+
+    @abstractmethod
+    def pause(self) -> None:
+        """Stop listening (e.g. while Robo talks, so he doesn't hear himself)."""
+
+    def prepare(self) -> None:
+        """A conversation is starting: get ready to listen (e.g. load the
+        speech model) without opening the microphone yet."""
+
+    def set_wake_word(self, enabled: bool, on_wake: Callable[[], None]) -> None:
+        """Keep listening for "Hey Robo" between conversations."""
+
+    def shutdown(self) -> None:
+        """The app is closing."""
+
+
 # ---------------------------------------------------------------- platform
 class Platform(ABC):
     """Bundles everything OS specific. One instance per run."""
@@ -160,6 +221,16 @@ class Platform(ABC):
     def acquire_single_instance(self) -> bool:
         """Return False if another robot is already running."""
         return True
+
+    def speech_output(self) -> Optional[SpeechOutput]:
+        return None
+
+    def speech_input(self) -> Optional[SpeechInput]:
+        return None
+
+    def battery_percent(self) -> Optional[tuple]:
+        """(percent, charging) or None, for answering "how's my battery?"."""
+        return None
 
     def config_dir(self) -> str:
         """Folder for settings.json."""

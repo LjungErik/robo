@@ -28,6 +28,12 @@ class Settings:
     dress_up: bool = True
     dress_up_every: float = 45.0        # about how often he dresses up as a character
     characters: Tuple[str, ...] = ALL_CHARACTERS   # who he may dress up as
+    voice: bool = True                  # speak answers out loud
+    voice_pitch: float = 75.0           # 0..99, higher = squeakier
+    voice_speed: float = 1.0            # speaking speed multiplier
+    voice_volume: float = 0.8           # 0..1
+    robot_effect: bool = True           # metallic robot filter + chirps
+    wake_word: bool = False             # keep listening for "Hey Robo"
     verbose: bool = False               # log events
     demo: bool = False                  # show every icon once at start-up (not saved)
 
@@ -141,6 +147,7 @@ SECTIONS = (
     ('bubbles', 'Speech bubbles', '💬'),
     ('evil', 'Evil mode', '😈'),
     ('dress', 'Dressing up', '🎭'),
+    ('voice', 'Voice & talking', '🗣️'),
     ('advanced', 'Advanced', '🔧'),
 )
 
@@ -167,6 +174,19 @@ FIELDS = (
           depends='dress_up', fmt=fmt_seconds),
     Field('characters', 'Characters', 'dress', 'characters', 'Who he is allowed to become.',
           depends='dress_up'),
+    Field('voice', 'Talk out loud', 'voice', 'bool',
+          'Double-click Robo (or right-click → Talk to me) to chat.'),
+    Field('voice_pitch', 'Voice pitch', 'voice', 'float', 'From deep bot to squeaky bot.',
+          min=0, max=99, step=1, depends='voice', fmt=lambda v: f'{v:.0f}'),
+    Field('voice_speed', 'Talking speed', 'voice', 'float', '',
+          min=0.5, max=2.0, step=0.1, depends='voice', fmt=fmt_times),
+    Field('voice_volume', 'Volume', 'voice', 'float', '',
+          min=0.0, max=1.0, step=0.1, depends='voice', fmt=lambda v: f'{v * 100:.0f}%'),
+    Field('robot_effect', 'Robot voice effect', 'voice', 'bool',
+          'A metallic shimmer and a little "bip-bip" before he speaks.', depends='voice'),
+    Field('wake_word', 'Listen for "Hey Robo"', 'voice', 'bool',
+          'Keeps the microphone open so you can just say "Hey Robo". '
+          'Everything is understood offline, on this computer.'),
     Field('verbose', 'Log what he sees', 'advanced', 'bool',
           'Prints notifications and decisions to the terminal.'),
 )

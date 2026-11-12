@@ -311,3 +311,157 @@ class NewCharacterMigrationTest(unittest.TestCase):
         s = Settings(characters=('chef',))
         again = Settings.from_dict(s.to_dict())
         self.assertEqual(again.characters, ('chef',))
+
+
+class BrainTest(unittest.TestCase):
+    def setUp(self):
+        from robo.conversation import Context, RuleBrain
+        self.brain = RuleBrain(random.Random(1))
+        self.ctx = Context(battery=(15, False), characters=('pirate', 'chef'))
+
+    def ask(self, text):
+        return self.brain.respond(text, self.ctx)
+
+    def test_topics(self):
+        self.assertIn('Robo', self.ask("what's your name").text)
+        self.assertEqual(self.ask('tell me a joke').action, 'hearts')
+        self.assertIn('15 percent', self.ask('how is my battery').text)
+        self.assertEqual(self.ask('how is my battery').icon, 'battery_low')
+        self.assertTrue(self.ask('goodbye').end)
+        self.assertEqual(self.ask('you are so cute').icon, 'heart')
+        self.assertEqual(self.ask('you are stupid').mood, 'sad')
+
+    def test_specific_topics_beat_greetings(self):
+        self.assertEqual(self.ask('hey what time is it').icon, 'alarm')
+
+    def test_dress_up_by_name_and_random(self):
+        r = self.ask('can you dress up as a wizard')
+        self.assertEqual((r.action, r.action_arg), ('dress_up', 'wizard'))
+        r = self.ask('put on a costume')
+        self.assertIn(r.action_arg, ('pirate', 'chef'))      # only allowed characters
+
+    def test_unknown_gets_a_friendly_fallback(self):
+        r = self.ask('purple monkey dishwasher')
+        self.assertFalse(r.end)
+        self.assertEqual(r.mood, 'surprised')
+
+
+class ConversationTest(unittest.TestCase):
+    def setUp(self):
+        self.robot, self.p = make_robot(dress_up_every=0, evil_after=0)
+
+    def run_until_listening(self, max_seconds=20):
+        for _ in range(int(max_seconds * 10)):
+            if self.p.ears.listening:
+                return
+            self.p.scheduler.advance(0.1)
+        self.fail('never started listening')
+
+    def test_double_click_starts_a_chat_and_he_answers(self):
+        x, y = self.p.window.pos
+        for _ in range(2):
+            self.robot.pointer_press(PointerEvent(1, 85, 200, x + 85, y + 200))
+            self.robot.pointer_release(PointerEvent(1, 85, 200, x + 85, y + 200))
+        self.assertTrue(self.robot.conversation.active)
+        self.assertEqual(len(self.p.voice.said), 1)                 # greeting
+        self.run_until_listening()
+        self.assertEqual(self.robot.bubbles.current and self.robot.bubbles.current.kind or
+                         self.robot.bubbles.pending[0].kind, 'mic')
+        self.p.ears.hear('tell me a joke')
+        self.assertEqual(self.robot.conversation.state, 'speaking')
+        self.assertTrue(any(j in self.p.voice.said[-1] for j in ('robot', 'chips', 'virus',
+                                                                  'drive', 'batteries')))
+        self.run_until_listening()                                  # listens again
+        self.p.ears.hear('goodbye')
+        self.p.scheduler.advance(5)
+        self.assertFalse(self.robot.conversation.active)
+        self.assertIsNone(self.p.ears.listening)
+
+    def test_mouth_moves_while_he_speaks(self):
+        self.robot.talk()
+        self.p.scheduler.advance(0.2)
+        from robo.core.pose import build_pose
+        mouth = [build_pose(self.robot, self.p.clock()).talk
+                 for _ in range(10) if not self.p.scheduler.advance(0.05)]
+        self.assertGreater(max(mouth), 0.5)
+
+    def test_asking_for_a_costume_dresses_him_up(self):
+        self.robot.talk()
+        self.run_until_listening()
+        self.p.ears.hear('dress up as a pirate please')
+        self.p.scheduler.advance(1)
+        self.assertEqual(self.robot.wardrobe.current.id, 'pirate')
+
+    def test_silence_ends_the_conversation_politely(self):
+        self.robot.talk()
+        self.run_until_listening()
+        self.p.ears.stay_silent()
+        self.assertEqual(self.robot.conversation.state, 'speaking')   # farewell
+        self.p.scheduler.advance(10)
+        self.assertFalse(self.robot.conversation.active)
+
+    def test_single_click_hushes_him(self):
+        self.robot.talk()
+        click_robot(self.robot, self.p)
+        self.p.scheduler.advance(0.5)
+        self.assertFalse(self.robot.conversation.active)
+
+    def test_wake_word_starts_a_chat_when_enabled(self):
+        self.robot.conversation.configure(Settings(wake_word=True))
+        self.p.ears.say_wake_word()
+        self.assertTrue(self.robot.conversation.active)
+
+    def test_without_ears_he_explains(self):
+        self.robot.conversation.ears = None
+        self.robot.talk()
+        self.assertIn('hear', self.p.voice.said[-1])
+        self.p.scheduler.advance(10)
+        self.assertFalse(self.robot.conversation.active)
+
+    def test_voice_off_uses_silent_voice(self):
+        self.robot.conversation.configure(Settings(voice=False))
+        self.robot.talk()
+        self.assertEqual(self.p.voice.said, [])
+        self.assertTrue(self.robot.conversation.active)
+
+
+def _speech_helper_ready():
+    from robo.platform.linux.listen import data_dir, find_model
+    return (os.path.exists(os.path.join(data_dir(), 'venv', 'bin', 'python'))
+            and find_model() is not None)
+
+
+@unittest.skipUnless(sys.platform.startswith('linux') and _speech_helper_ready(),
+                     "Robo's speech recognition is not installed")
+class SpeechRecognitionTest(unittest.TestCase):
+    """Runs the real Vosk helper on a WAV file made with espeak-ng."""
+
+    def test_helper_understands_a_sentence(self):
+        import json
+        import subprocess
+        import tempfile
+        from robo import audio
+        from robo.platform.linux.listen import WORKER, data_dir, find_model
+        from robo.platform.linux.voice import Espeak
+        e = Espeak()
+        samples = e.synth('tell me a joke', voice='en-us', wpm=150, pitch=45)
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = os.path.join(tmp, 'q.wav')
+            audio.write_wav(wav, samples, e.rate)
+            python = os.path.join(data_dir(), 'venv', 'bin', 'python')
+            proc = subprocess.Popen([python, '-I', WORKER, '--model', find_model(),
+                                     '--input', wav], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            proc.stdin.write('listen 4\n')
+            proc.stdin.flush()
+            events = []
+            for line in proc.stdout:                 # wait for the answer, then quit
+                events.append(json.loads(line))
+                if events[-1]['event'] in ('heard', 'silence', 'error'):
+                    break
+            proc.stdin.write('quit\n')
+            proc.stdin.close()
+            proc.wait(timeout=10)
+        heard = [ev['text'] for ev in events if ev['event'] == 'heard']
+        self.assertTrue(heard, events)
+        self.assertIn('joke', heard[0])

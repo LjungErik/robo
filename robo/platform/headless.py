@@ -11,7 +11,8 @@ complete example of a back end, handy as a template for a new port.
 import cairo
 
 from robo.core.geometry import Rect
-from robo.platform.base import IdleMonitor, Platform, Scheduler, WindowHost
+from robo.platform.base import (IdleMonitor, Platform, Scheduler, SpeechInput, SpeechOutput,
+                                Utterance, WindowHost)
 
 
 class ManualScheduler(Scheduler):
@@ -101,6 +102,74 @@ class FakeIdleMonitor(IdleMonitor):
         return self.inhibited
 
 
+class FakeVoice(SpeechOutput):
+    """Records what was said; each sentence 'plays' for a while on the manual clock."""
+    SECONDS_PER_WORD = 0.3
+
+    def __init__(self, scheduler):
+        self.scheduler = scheduler
+        self.said = []
+        self.settings = None
+        self._job = 0
+
+    def configure(self, settings):
+        self.settings = settings
+
+    def say(self, text, on_started, on_done):
+        self.said.append(text)
+        self._job += 1
+        job = self._job
+        duration = max(0.5, len(text.split()) * self.SECONDS_PER_WORD)
+        frames = int(duration * 30)
+        on_started(Utterance(text, [0.8 if i % 4 < 2 else 0.2 for i in range(frames)],
+                             1 / 30, duration))
+        self._on_done = on_done
+        self.scheduler.after(duration, lambda: self._done(job))
+
+    def _done(self, job):
+        if job == self._job and self._on_done:
+            cb, self._on_done = self._on_done, None
+            cb()
+
+    def stop(self):
+        self._job += 1
+        cb, self._on_done = getattr(self, '_on_done', None), None
+        if cb:
+            cb()
+
+
+class FakeEars(SpeechInput):
+    """Tests decide what the user "says" with hear() / stay_silent()."""
+
+    def __init__(self):
+        self.listening = None
+        self.wake_word = False
+        self.on_wake = None
+
+    def listen(self, timeout, on_heard, on_silence, on_partial=None):
+        self.listening = (on_heard, on_silence)
+
+    def pause(self):
+        self.listening = None
+
+    def set_wake_word(self, enabled, on_wake):
+        self.wake_word, self.on_wake = enabled, on_wake
+
+    def hear(self, text):
+        on_heard, _ = self.listening
+        self.listening = None
+        on_heard(text)
+
+    def stay_silent(self):
+        _, on_silence = self.listening
+        self.listening = None
+        on_silence()
+
+    def say_wake_word(self):
+        if self.wake_word and self.on_wake:
+            self.on_wake()
+
+
 class HeadlessPlatform(Platform):
     name = 'headless'
 
@@ -110,6 +179,9 @@ class HeadlessPlatform(Platform):
         self.idle = FakeIdleMonitor()
         self._config_dir = config_dir
         self.settings_opened = []      # (settings, on_apply) for every open_settings() call
+        self.voice = FakeVoice(self.scheduler)
+        self.ears = FakeEars()
+        self.battery = (76, False)
 
     def clock(self):
         return self.scheduler.now
@@ -126,6 +198,15 @@ class HeadlessPlatform(Platform):
 
     def config_dir(self):
         return self._config_dir or super().config_dir()
+
+    def speech_output(self):
+        return self.voice
+
+    def speech_input(self):
+        return self.ears
+
+    def battery_percent(self):
+        return self.battery
 
     @property
     def has_settings_window(self):

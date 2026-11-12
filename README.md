@@ -76,13 +76,42 @@ does his signature move and keeps making demands in his speech bubble.
 - To add a character: draw its outfit in `robo/render/costumes.py`, add its demand
   icon to `robo/render/icons.py`, and list it in `robo/core/characters.py`.
 
+## Talking 🗣️
+
+**Double-click Robo** (or right-click → **Talk to me**) and he says hello,
+then listens. Just talk to him. He answers out loud in a squeaky robot voice,
+moves his mouth along, and keeps listening until you say goodbye or go quiet.
+A single click while he's chatting hushes him.
+
+Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
+*"dress up as a pirate"*, *"dance!"*, *"sing a song"*, *"you're so cute"*,
+*"take a nap"*, *"goodbye"*.
+
+- While he listens his bubble shows a 🎤, and while he thinks a ⚙️.
+- Turn on **Listen for "Hey Robo"** in Settings to start a chat by voice.
+  This keeps the microphone open. Otherwise the microphone is only on while he listens.
+- Pitch, speed, volume and the robot effect are in **Settings → Voice & talking**.
+- Speech recognition is **offline** ([Vosk](https://alphacephei.com/vosk/)): nothing you
+  say leaves your computer. `install.sh` sets it up in `~/.local/share/robo`
+  (its own Python environment plus a ~70 MB English model).
+- His voice is espeak-ng with a little robot filter (`robo/audio.py`).
+- If he can't hear you, check that your microphone isn't muted in Settings → Sound.
+
+How it works: `robo/core/talk.py` runs the conversation: listen, think, speak,
+listen again. `robo/conversation/rules.py` is his brain for now, a simple
+"switch statement" of topics where the first match answers. To teach him a new
+answer, add a row to `RULES`. To swap in an LLM later, write a
+`robo.conversation.Brain` subclass whose `ask()` answers in the background, and
+pass it in `robo/app.py` where `RuleBrain()` is used today.
+
 ## Interacting
 
 | Action        | Result                                   |
 |---------------|------------------------------------------|
-| Left-click    | Pat him (hearts!), dismiss the bubble, or end his costume |
+| Left-click    | Pat him (hearts!), dismiss the bubble, end his costume, or hush him |
+| Double-click  | Talk to him |
 | Drag          | Pick him up; he falls back down when you let go |
-| Right-click   | Menu: wave, nap / wake, dress up, settings, show all icons, quit |
+| Right-click   | Menu: wave, nap / wake, dress up, talk, settings, show all icons, quit |
 
 ## What triggers a bubble
 
@@ -120,6 +149,8 @@ robo/
   app.py                  RoboApp: command line, wiring, applying settings live
   config.py               Settings + FIELDS (describes every setting for the settings window)
   settings_store.py       settings.json load / save / change detection
+  audio.py                voice effects (robot filter, chirps, mouth envelope)
+  conversation/           his brain: Brain interface + RuleBrain (keyword switch)
   events.py               Event, list of KINDS, classify() for notification text
   core/                   the robot itself, pure Python (no GUI or OS calls)
     companion.py          ties everything together; the only thing the platform talks to
@@ -131,6 +162,7 @@ robo/
     wardrobe.py           when he dresses up, the poof, signature-move timing
     effects.py            particles (numbers, notes, sparks)
     bubble.py             speech bubble queue, duplicates, pop animation
+    talk.py               conversations: listen → think → speak → listen
     pose.py               state -> Pose (what one frame should look like)
     layout.py, geometry.py  window size, bubble position, click areas
   render/                 Cairo drawing (portable)
@@ -140,7 +172,8 @@ robo/
   platform/
     base.py               the contract a port implements
     linux/                GTK window, GLib loop, D-Bus notifications, battery, network,
-                          updates, idle monitor, single-instance lock, settings window
+                          updates, idle monitor, single-instance lock, settings window,
+                          voice (espeak-ng) and ears (Vosk helper process)
     headless.py           off-screen fake platform used by the tests
 tests/test_robot.py       python3 -m unittest discover -s tests
 ```
@@ -166,6 +199,8 @@ new `robo/platform/<os>/` package that implements the classes in
 | updates | apt / snap / flatpak | `winget upgrade` | `softwareupdate -l`, `brew outdated` |
 | `IdleMonitor` | Mutter idle monitor | `GetLastInputInfo` | `CGEventSourceSecondsSinceLastEventType` |
 | settings window (optional) | GTK 3, built from `config.FIELDS` | Qt / Tk form from the same `FIELDS` | same |
+| `SpeechOutput` | espeak-ng via ctypes + `robo/audio.py` | SAPI / espeak-ng | `AVSpeechSynthesizer` / espeak-ng |
+| `SpeechInput` | Vosk helper process | Vosk works there too | Vosk works there too |
 
 Any piece can also be swapped on Linux. For example, a Qt window instead of
 GTK only means writing a new `WindowHost` and returning it from

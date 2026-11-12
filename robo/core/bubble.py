@@ -11,7 +11,8 @@ POP_IN, POP_OUT = 0.35, 0.22     # animation times
 GAP = 0.35                       # pause between two bubbles
 DEDUP_SECONDS = 60
 MAX_QUEUE = 10
-BUBBLE_KINDS = frozenset(KINDS) | DEMAND_ICONS   # every icon a bubble can show
+TALK_ICONS = frozenset({'mic', 'thinking'})      # shown during conversations
+BUBBLE_KINDS = frozenset(KINDS) | DEMAND_ICONS | TALK_ICONS   # every icon a bubble can show
 
 
 def ease_out_back(x):
@@ -64,9 +65,11 @@ class BubbleQueue:
     def busy(self):
         return self.current is not None or bool(self.pending)
 
-    def push(self, kind, now, duration=DEFAULT_SECONDS, dedup=True, limit=MAX_QUEUE):
+    def push(self, kind, now, duration=DEFAULT_SECONDS, dedup=True, limit=MAX_QUEUE,
+             front=False):
         """Queue an icon. Returns 'queued', 'bumped' (count +1 on the open
-        bubble), 'merged' (count +1 on a waiting one) or 'ignored'."""
+        bubble), 'merged' (count +1 on a waiting one) or 'ignored'.
+        front=True jumps the queue and closes whatever is showing now."""
         if kind not in BUBBLE_KINDS:
             kind = FALLBACK_KIND
         if dedup and kind in SYSTEM_KINDS:
@@ -82,6 +85,11 @@ class BubbleQueue:
             if b.kind == kind:
                 b.count += 1
                 return 'merged'
+        if front:
+            self.pending.insert(0, Bubble(kind, duration=duration))
+            self.dismiss(now)
+            self.next_show_at = min(self.next_show_at, now)
+            return 'queued'
         if len(self.pending) >= limit:
             return 'ignored'
         self.pending.append(Bubble(kind, duration=duration))

@@ -38,6 +38,7 @@ class Pose:
     costume: str = ''            # outfit id ('' = just Robo)
     poof: Optional[float] = None  # costume-change smoke, 0..1 while it plays
     particles: list = field(default_factory=list)       # robo.core.effects.Particle
+    talk: float = 0.0            # mouth opening while speaking (0..1)
 
 
 def _mood(robot, now, looks_evil):
@@ -48,6 +49,11 @@ def _mood(robot, now, looks_evil):
         return 'sleep'
     if face.active(F.SURPRISED, now) or body.held:
         return 'surprised'
+    talk = robot.conversation
+    if talk.state == 'speaking' and talk.reply is not None and talk.reply.mood:
+        return talk.reply.mood
+    if talk.state == 'thinking':
+        return 'focus'
     if robot.wardrobe.doing_move(now):
         return robot.wardrobe.current.move_mood
     if face.active(F.HAPPY, now) or robot.bubbles.open:
@@ -90,6 +96,8 @@ def _move_lift(robot, now, t):
 def _tilt(robot, now, sleeping):
     if sleeping:
         return 0.12 * robot.body.facing
+    if robot.conversation.state == 'listening':
+        return -0.1                        # head tilted: "I'm listening!"
     w = robot.wardrobe
     if w.doing_move(now) and w.current.move_lift == 'fly':
         return 0.22                        # leaning into the flight (head forward)
@@ -135,4 +143,5 @@ def build_pose(robot, now):
         costume=character.id if character else '',
         poof=robot.wardrobe.poof(now),
         particles=robot.effects.particles,
+        talk=robot.conversation.mouth(now),
     )

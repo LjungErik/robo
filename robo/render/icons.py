@@ -661,6 +661,49 @@ def icon_fish(cr, t):
         paint(cr, None, BLUE, 1.2)
 
 
+
+# ---------------------------------------------------------------- conversation
+def icon_mic(cr, t):
+    """Listening: a microphone with sound waves pulsing out."""
+    for i in range(2):
+        k = (t * 1.2 + i * 0.5) % 1.0
+        for side in (-1, 1):
+            cr.new_path()
+            cr.arc(24, 20, 11 + k * 9, -0.45 + (math.pi if side < 0 else 0),
+                   0.45 + (math.pi if side < 0 else 0))
+            paint(cr, None, (SKY[0], SKY[1], SKY[2], 1 - k), 2.6)
+    rrect(cr, 18, 6, 12, 22, 6)
+    paint(cr, RED)
+    for y in (12, 16, 20):
+        line(cr, [(20.5, y), (27.5, y)], (1, 1, 1, 0.7), 1.4)
+    cr.new_path()
+    cr.arc(24, 21, 10, 0.1 * math.pi, 0.9 * math.pi)
+    paint(cr, None, INK, 2.6)
+    line(cr, [(24, 31), (24, 37)], INK, 2.6)
+    line(cr, [(17, 38), (31, 38)], INK, 2.8)
+
+
+def icon_thinking(cr, t):
+    """Thinking: a little gear turning and dots bouncing."""
+    cr.save()
+    cr.translate(24, 18)
+    cr.rotate(t * 2.5)
+    cr.new_path()
+    teeth = 8
+    step = math.pi / teeth
+    for i in range(teeth * 2):
+        cr.arc(0, 0, 11 if i % 2 == 0 else 8.5, i * step, (i + 1) * step)
+    cr.close_path()
+    paint(cr, YELLOW)
+    circle(cr, 0, 0, 3.5)
+    paint(cr, WHITE, INK, 2)
+    cr.restore()
+    for i in range(3):
+        dy = -abs(math.sin(t * 6 - i * 0.7)) * 3
+        circle(cr, 15 + i * 9, 38 + dy, 2.8)
+        paint(cr, INK, None)
+
+
 # name -> (draw function, accent colour used for the robot's antenna)
 ICONS = {
     'battery_low': (icon_battery_low, RED),
@@ -695,6 +738,9 @@ ICONS = {
     'treasure': (icon_treasure, YELLOW),
     'kitten': (icon_kitten, ORANGE),
     'fish': (icon_fish, BLUE),
+    # conversation
+    'mic': (icon_mic, SKY),
+    'thinking': (icon_thinking, YELLOW),
 }
 
 
