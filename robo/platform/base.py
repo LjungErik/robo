@@ -154,14 +154,19 @@ class SpeechOutput(ABC):
 
     @abstractmethod
     def say(self, text: str, on_started: Callable[[Utterance], None],
-            on_done: Callable[[], None]) -> None:
+            on_done: Callable[[], None], style: str = 'normal') -> None:
         """Speak `text` without blocking. Call on_started(utterance) when the
         audio starts and on_done() when it has finished (or was stopped),
-        both on the main thread."""
+        both on the main thread. `style` is 'normal' (soft, friendly voice)
+        or 'evil' (robotic and menacing)."""
 
     @abstractmethod
     def stop(self) -> None:
         """Stop talking right now (on_done is still called)."""
+
+    def shutdown(self) -> None:
+        """The app is closing."""
+        self.stop()
 
     def update(self, now: float) -> None:
         """Called every frame; for implementations without real audio."""

@@ -32,7 +32,7 @@ class Settings:
     voice_pitch: float = 75.0           # 0..99, higher = squeakier
     voice_speed: float = 1.0            # speaking speed multiplier
     voice_volume: float = 0.8           # 0..1
-    robot_effect: bool = True           # metallic robot filter + chirps
+    robot_effect: bool = False          # use the beepy robot voice even when nice
     wake_word: bool = False             # keep listening for "Hey Robo"
     verbose: bool = False               # log events
     demo: bool = False                  # show every icon once at start-up (not saved)
@@ -182,8 +182,9 @@ FIELDS = (
           min=0.5, max=2.0, step=0.1, depends='voice', fmt=fmt_times),
     Field('voice_volume', 'Volume', 'voice', 'float', '',
           min=0.0, max=1.0, step=0.1, depends='voice', fmt=lambda v: f'{v * 100:.0f}%'),
-    Field('robot_effect', 'Robot voice effect', 'voice', 'bool',
-          'A metallic shimmer and a little "bip-bip" before he speaks.', depends='voice'),
+    Field('robot_effect', 'Robotic voice', 'voice', 'bool',
+          'Use the beepy robot voice all the time. Evil Robo always sounds like this.',
+          depends='voice'),
     Field('wake_word', 'Listen for "Hey Robo"', 'voice', 'bool',
           'Keeps the microphone open so you can just say "Hey Robo". '
           'Everything is understood offline, on this computer.'),

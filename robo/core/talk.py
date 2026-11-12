@@ -24,6 +24,7 @@ IDLE, SPEAKING, LISTENING, THINKING = 'idle', 'speaking', 'listening', 'thinking
 LISTEN_SECONDS = 7.0          # how long he waits for you to start talking
 THINK_BUBBLE_DELAY = 0.15     # only show "thinking" if the brain takes a moment
 MIC, THINKING_ICON = 'mic', 'thinking'      # see bubble.TALK_ICONS
+EVIL_MOODS = ('laugh', 'evil')   # these lines are said in the evil voice ("mwahaha")
 
 CANT_HEAR = Reply("I'd love to chat, but I can't hear you yet. "
                   'Run the install script to give me ears!', 'sad', end=True)
@@ -40,7 +41,7 @@ class SilentVoice(SpeechOutput):
         self._done_at = None
         self._on_done = None
 
-    def say(self, text, on_started, on_done):
+    def say(self, text, on_started, on_done, style='normal'):
         duration = max(0.8, len(text.split()) / self.WORDS_PER_SECOND)
         frames = int(duration / self.FRAME)
         envelope = [0.55 + 0.45 * ((i // 4) % 2) if (i // 2) % 5 else 0.1 for i in range(frames)]
@@ -151,9 +152,10 @@ class Conversation:
         personality.on_reply(self.robot, reply, now)
         if self.ears:
             self.ears.pause()
-        log.info('robo says: %s', reply.text)
+        style = 'evil' if self.robot.evil.active or reply.mood in EVIL_MOODS else 'normal'
+        log.info('robo says (%s voice): %s', style, reply.text)
         self.utterance = None
-        self.voice.say(reply.text, self._started, self._spoken)
+        self.voice.say(reply.text, self._started, self._spoken, style=style)
 
     def _started(self, utterance):
         utterance.started_at = self.robot.clock()
@@ -228,4 +230,4 @@ class Conversation:
         if self.ears:
             self.ears.shutdown()
         if self.real_voice:
-            self.real_voice.stop()
+            self.real_voice.shutdown()

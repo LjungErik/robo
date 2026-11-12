@@ -79,8 +79,10 @@ does his signature move and keeps making demands in his speech bubble.
 ## Talking 🗣️
 
 **Double-click Robo** (or right-click → **Talk to me**) and he says hello,
-then listens. Just talk to him. He answers out loud in a squeaky robot voice,
+then listens. Just talk to him. He answers out loud in a soft, friendly voice,
 moves his mouth along, and keeps listening until you say goodbye or go quiet.
+**Evil Robo** has a deep, buzzy robot voice instead. You can also hear it by
+asking him *"are you evil?"*.
 A single click while he's chatting hushes him.
 
 Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
@@ -90,11 +92,14 @@ Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
 - While he listens his bubble shows a 🎤, and while he thinks a ⚙️.
 - Turn on **Listen for "Hey Robo"** in Settings to start a chat by voice.
   This keeps the microphone open. Otherwise the microphone is only on while he listens.
-- Pitch, speed, volume and the robot effect are in **Settings → Voice & talking**.
+- Pitch, speed and volume are in **Settings → Voice & talking**. Switch on
+  **Robotic voice** if you want the beepy voice all the time.
 - Speech recognition is **offline** ([Vosk](https://alphacephei.com/vosk/)): nothing you
-  say leaves your computer. `install.sh` sets it up in `~/.local/share/robo`
-  (its own Python environment plus a ~70 MB English model).
-- His voice is espeak-ng with a little robot filter (`robo/audio.py`).
+  say leaves your computer. `install.sh` sets everything up in `~/.local/share/robo`:
+  its own Python environment, a ~70 MB English recognition model and the ~60 MB voice.
+- His nice voice is [Piper](https://github.com/OHF-Voice/piper1-gpl) (offline neural
+  speech, voice `en_US-hfc_female-medium`, lifted a little in pitch). The evil and robotic
+  voices are espeak-ng with a robot filter (`robo/audio.py`).
 - If he can't hear you, check that your microphone isn't muted in Settings → Sound.
 
 How it works: `robo/core/talk.py` runs the conversation: listen, think, speak,
@@ -199,7 +204,7 @@ new `robo/platform/<os>/` package that implements the classes in
 | updates | apt / snap / flatpak | `winget upgrade` | `softwareupdate -l`, `brew outdated` |
 | `IdleMonitor` | Mutter idle monitor | `GetLastInputInfo` | `CGEventSourceSecondsSinceLastEventType` |
 | settings window (optional) | GTK 3, built from `config.FIELDS` | Qt / Tk form from the same `FIELDS` | same |
-| `SpeechOutput` | espeak-ng via ctypes + `robo/audio.py` | SAPI / espeak-ng | `AVSpeechSynthesizer` / espeak-ng |
+| `SpeechOutput` | Piper (nice) + espeak-ng (evil), `robo/audio.py` | Piper works there too | Piper works there too |
 | `SpeechInput` | Vosk helper process | Vosk works there too | Vosk works there too |
 
 Any piece can also be swapped on Linux. For example, a Qt window instead of

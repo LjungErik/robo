@@ -7,7 +7,6 @@ virtualenv, which install.sh sets up:
 The helper only opens the microphone while listening, and is shut down
 completely between conversations unless "Hey Robo" listening is on.
 """
-import glob
 import json
 import logging
 import os
@@ -18,19 +17,11 @@ from gi.repository import GLib
 
 from robo.platform.base import SpeechInput
 
+from .paths import data_dir, find_model, venv_python  # noqa: F401  (data_dir re-exported)
+
 log = logging.getLogger(__name__)
 
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stt_worker.py')
-
-
-def data_dir():
-    base = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
-    return os.path.join(base, 'robo')
-
-
-def find_model():
-    models = sorted(glob.glob(os.path.join(data_dir(), 'models', 'vosk-model*')))
-    return next((m for m in models if os.path.isdir(m)), None)
 
 
 def find_recorder():
@@ -39,7 +30,7 @@ def find_recorder():
 
 class VoskEars(SpeechInput):
     def __init__(self, python=None, model=None, recorder=None, test_input=None):
-        self.python = python or os.path.join(data_dir(), 'venv', 'bin', 'python')
+        self.python = python or venv_python()
         self.model = model or find_model()
         self.recorder = recorder or find_recorder()
         self.test_input = test_input                  # WAV file instead of the microphone

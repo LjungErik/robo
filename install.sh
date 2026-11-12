@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs Robo the desktop companion: dependencies, voice, app launcher, autostart.
 #   ./install.sh             everything
-#   ./install.sh --no-voice  skip speech recognition (~110 MB download)
+#   ./install.sh --no-voice  skip talking (speech recognition + soft voice, ~250 MB)
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,6 +10,8 @@ NAME="robot-companion"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/robo"
 MODEL_NAME="vosk-model-small-en-us-0.15"
 MODEL_URL="https://alphacephei.com/vosk/models/$MODEL_NAME.zip"
+VOICE_NAME="en_US-hfc_female-medium"
+VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/$VOICE_NAME"
 WITH_VOICE=1
 [ "${1:-}" = "--no-voice" ] && WITH_VOICE=0
 
@@ -27,12 +29,20 @@ if [ ${#missing[@]} -gt 0 ]; then
   sudo apt-get install -y "${missing[@]}"
 fi
 
-# ---- Robo's ears: offline speech recognition (Vosk) in its own environment
+# ---- Robo's ears and soft voice: Vosk + Piper, offline, in their own environment
 if [ $WITH_VOICE = 1 ]; then
-  if ! "$DATA/venv/bin/python" -c 'import vosk' 2>/dev/null; then
-    echo "Setting up speech recognition (Vosk)…"
+  if ! "$DATA/venv/bin/python" -c 'import vosk, piper' 2>/dev/null; then
+    echo "Setting up speech recognition (Vosk) and Robo's soft voice (Piper)…"
     python3 -m venv "$DATA/venv"
-    "$DATA/venv/bin/python" -m pip install -q --disable-pip-version-check vosk
+    "$DATA/venv/bin/python" -m pip install -q --disable-pip-version-check vosk piper-tts
+  fi
+  if [ ! -f "$DATA/voices/$VOICE_NAME.onnx.json" ]; then
+    echo "Downloading Robo's voice (~60 MB)…"
+    mkdir -p "$DATA/voices"
+    curl -fL --progress-bar -o "$DATA/voices/$VOICE_NAME.onnx.part" "$VOICE_URL.onnx"
+    curl -fsSL -o "$DATA/voices/$VOICE_NAME.onnx.json.part" "$VOICE_URL.onnx.json"
+    mv "$DATA/voices/$VOICE_NAME.onnx.part" "$DATA/voices/$VOICE_NAME.onnx"
+    mv "$DATA/voices/$VOICE_NAME.onnx.json.part" "$DATA/voices/$VOICE_NAME.onnx.json"
   fi
   if [ ! -d "$DATA/models/$MODEL_NAME" ]; then
     echo "Downloading the English speech model (~40 MB)…"

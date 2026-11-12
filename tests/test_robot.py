@@ -465,3 +465,39 @@ class SpeechRecognitionTest(unittest.TestCase):
         heard = [ev['text'] for ev in events if ev['event'] == 'heard']
         self.assertTrue(heard, events)
         self.assertIn('joke', heard[0])
+
+
+class VoiceStyleTest(unittest.TestCase):
+    def test_nice_robo_uses_the_soft_voice_and_evil_robo_the_robot_voice(self):
+        robot, p = make_robot(dress_up_every=0, evil_after=5)
+        robot.talk()
+        self.assertEqual(p.voice.styles[-1], 'normal')
+        robot.conversation.stop()
+        p.idle.feed(6)                                   # nobody touched the computer...
+        p.scheduler.advance(1)
+        robot.conversation.on_wake_word()                # ..."hey robo" while he's evil
+        self.assertEqual(p.voice.styles[-1], 'evil')
+
+    def test_evil_lines_use_the_evil_voice(self):
+        robot, p = make_robot(dress_up_every=0, evil_after=0)
+        robot.talk()
+        for _ in range(100):
+            if p.ears.listening:
+                break
+            p.scheduler.advance(0.1)
+        p.ears.hear('are you evil')
+        self.assertEqual(p.voice.styles[-1], 'evil')
+
+    def test_soft_voice_pitch_lift_keeps_the_length(self):
+        import array
+        from robo import audio
+        from robo.platform.linux.voice import nice_pitch_factor
+        self.assertAlmostEqual(nice_pitch_factor(0), 0.88)
+        self.assertGreater(nice_pitch_factor(75), 1.0)
+        samples = array.array('h', [1000] * 22050)
+        factor = nice_pitch_factor(75)
+        out = audio.resample(samples, factor)
+        self.assertAlmostEqual(len(out), 22050 / factor, delta=2)
+        soft = audio.soften(samples, 22050, volume=0.5)
+        self.assertEqual(soft[0], 0)                     # faded in: no click
+        self.assertEqual(max(soft), 500)

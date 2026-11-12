@@ -1,18 +1,24 @@
-"""Robo's voice on Linux.
+"""Robo's voices on Linux.
 
-EspeakVoice talks to the espeak-ng C library directly (ctypes), so it
-only needs libespeak-ng (installed with Ubuntu's speech-dispatcher), runs
-the robot filter from robo.audio, and plays the result with pw-play/aplay.
-SpdSayVoice is a fallback that uses the plain system voice.
+    nice Robo   a soft, natural Piper voice (tts_worker.py, in Robo's venv),
+                lifted a little in pitch so it sounds cute
+    evil Robo   espeak-ng through its C library, deep and buzzy, with the
+                robot filter from robo.audio ("bwoo-woo")
+
+LinuxVoice picks per sentence via `style` ('normal' or 'evil'). If Piper
+isn't installed, the nice voice falls back to a gentle espeak-ng voice.
+SpdSayVoice is a last resort that uses the plain system voice.
 """
 import ctypes
 import ctypes.util
 import itertools
+import json
 import logging
 import os
 import random
 import shutil
 import signal
+import subprocess
 import tempfile
 import threading
 
@@ -21,14 +27,26 @@ from gi.repository import GLib
 from robo import audio
 from robo.platform.base import SpeechOutput, Utterance
 
+from .paths import find_voice, venv_python
+
 log = logging.getLogger(__name__)
 
-VOICE = 'en-us+f4'            # higher-pitched variant: cute
-BASE_WPM = 165
+TTS_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tts_worker.py')
 FRAME = 1 / 30
 PLAYBACK_LATENCY_FRAMES = 3   # the player needs a moment to start
+BASE_WPM = 165
 
-# espeak-ng constants
+ESPEAK_NICE = 'en-us+f4'      # fallback nice voice
+ESPEAK_EVIL = 'en-us+m3'      # evil robot: deep and gravelly
+EVIL_PITCH = 22
+
+
+def nice_pitch_factor(voice_pitch):
+    """Settings pitch 0..99 -> playback speed-up for the soft voice (0.88..1.15)."""
+    return 0.88 + max(0.0, min(99.0, voice_pitch)) / 99 * 0.27
+
+
+# ---------------------------------------------------------------- espeak-ng
 AUDIO_OUTPUT_SYNCHRONOUS = 2
 POS_CHARACTER = 1
 CHARS_UTF8, END_PAUSE = 0x1, 0x1000
@@ -38,7 +56,7 @@ SYNTH_CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.POINTER(ctypes.c_short), 
 
 
 class Espeak:
-    """Minimal binding: synthesise text into a list of samples."""
+    """Minimal binding to libespeak-ng: synthesise text into samples."""
 
     def __init__(self):
         name = ctypes.util.find_library('espeak-ng') or 'libespeak-ng.so.1'
@@ -64,7 +82,7 @@ class Espeak:
             self._samples.extend(ctypes.cast(wav, ctypes.POINTER(ctypes.c_short * n)).contents)
         return 0
 
-    def synth(self, text, voice=VOICE, wpm=BASE_WPM, pitch=75):
+    def synth(self, text, voice=ESPEAK_NICE, wpm=BASE_WPM, pitch=75):
         import array
         with self._lock:
             self._samples = array.array('h')
@@ -80,6 +98,83 @@ class Espeak:
         return samples
 
 
+# ---------------------------------------------------------------- Piper
+class Piper:
+    """Talks to tts_worker.py. Calls block, so use them from a background thread."""
+
+    def __init__(self, python=None, model=None):
+        self.python = python or venv_python()
+        self.model = model or find_voice()
+        self.available = bool(self.model) and os.path.exists(self.python)
+        self.proc = None
+        self._lock = threading.Lock()
+        self._ids = itertools.count(1)
+
+    def _ensure(self):
+        if self.proc is not None and self.proc.poll() is None:
+            return True
+        self.proc = subprocess.Popen([self.python, '-I', TTS_WORKER, '--model', self.model],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        ready = self._read()
+        if not ready or ready.get('event') != 'ready':
+            log.warning('soft voice failed to start: %s', ready and ready.get('text'))
+            self.available = False
+            self.shutdown()
+            return False
+        log.info('soft voice ready (%s)', os.path.basename(self.model))
+        return True
+
+    def _read(self):
+        line = self.proc.stdout.readline()
+        try:
+            return json.loads(line) if line else None
+        except ValueError:
+            return None
+
+    def _locked(self, fn, *args):
+        with self._lock:
+            return fn(*args)
+
+    def warm_up(self):
+        """Load the voice in the background so the first sentence is quick."""
+        threading.Thread(target=self._locked, args=(self._ensure,), daemon=True).start()
+
+    def synth(self, text, length_scale, out_path):
+        return self._locked(self._synth, text, length_scale, out_path)
+
+    def _synth(self, text, length_scale, out_path):
+        if not self.available or not self._ensure():
+            return False
+        req_id = next(self._ids)
+        try:
+            self.proc.stdin.write(json.dumps({'id': req_id, 'text': text, 'out': out_path,
+                                              'length_scale': length_scale}) + '\n')
+            self.proc.stdin.flush()
+        except (BrokenPipeError, ValueError):
+            self.proc = None
+            return False
+        while True:
+            msg = self._read()
+            if msg is None:
+                self.proc = None
+                return False
+            if msg.get('id') == req_id:
+                if msg.get('event') != 'done':
+                    log.warning('soft voice: %s', msg.get('text'))
+                return msg.get('event') == 'done'
+
+    def shutdown(self):
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            try:
+                proc.stdin.close()
+                proc.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                proc.kill()
+
+
+# ---------------------------------------------------------------- playback
 def spawn(argv, on_exit):
     """Start a process owned by GLib (so only GLib reaps it). Returns its pid."""
     flags = (GLib.SpawnFlags.DO_NOT_REAP_CHILD | GLib.SpawnFlags.STDOUT_TO_DEV_NULL
@@ -108,13 +203,22 @@ def find_player():
     return None
 
 
-class EspeakVoice(SpeechOutput):
-    def __init__(self):
-        self.engine = Espeak()
+class LinuxVoice(SpeechOutput):
+    def __init__(self, piper=None):
         self.player = find_player()
         if self.player is None:
             raise OSError('no audio player (pw-play, paplay or aplay) found')
-        self.pitch, self.speed, self.volume, self.effect = 75, 1.0, 0.8, True
+        try:
+            self.espeak = Espeak()
+        except OSError as e:
+            log.info('espeak-ng unavailable: %s', e)
+            self.espeak = None
+        self.piper = piper if piper is not None else Piper()
+        if not self.piper.available and self.espeak is None:
+            raise OSError('no speech engine (Piper or espeak-ng) found')
+        if self.piper.available:
+            self.piper.warm_up()
+        self.pitch, self.speed, self.volume, self.robotic = 75, 1.0, 0.8, False
         self.rng = random.Random()
         self._job = itertools.count()
         self._current = None          # (job id, on_done) of what he is saying
@@ -125,31 +229,55 @@ class EspeakVoice(SpeechOutput):
         self.pitch = settings.voice_pitch
         self.speed = settings.voice_speed
         self.volume = settings.voice_volume
-        self.effect = settings.robot_effect
+        self.robotic = settings.robot_effect
 
-    def say(self, text, on_started, on_done):
+    # ------------------------------------------------------------ rendering
+    def _render(self, text, style, params):
+        """Background thread: returns (samples, sample_rate)."""
+        pitch, speed, volume, robotic = params
+        if style == 'evil' and self.espeak:
+            raw = self.espeak.synth(text, ESPEAK_EVIL, BASE_WPM * 0.9 * speed, EVIL_PITCH)
+            return audio.robotize(raw, self.espeak.rate, volume, True, self.rng,
+                                  evil=True), self.espeak.rate
+        if robotic and self.espeak:
+            raw = self.espeak.synth(text, ESPEAK_NICE, BASE_WPM * speed, pitch)
+            return audio.robotize(raw, self.espeak.rate, volume, True, self.rng), self.espeak.rate
+        if self.piper.available:
+            factor = nice_pitch_factor(pitch)
+            fd, tmp = tempfile.mkstemp(prefix='robo-piper-', suffix='.wav', dir=self._dir)
+            os.close(fd)
+            try:
+                if self.piper.synth(text, factor / speed, tmp):
+                    raw, rate = audio.read_wav(tmp)
+                    return audio.soften(raw, rate, volume, factor), rate
+            finally:
+                os.unlink(tmp)
+        if self.espeak is None:
+            raise OSError('no speech engine available')
+        raw = self.espeak.synth(text, ESPEAK_NICE, BASE_WPM * speed, pitch)   # gentle fallback
+        return audio.soften(raw, self.espeak.rate, volume), self.espeak.rate
+
+    # ------------------------------------------------------------ SpeechOutput
+    def say(self, text, on_started, on_done, style='normal'):
         self.stop()
         job = next(self._job)
         self._current = (job, on_done)
-        params = (self.pitch, self.speed, self.volume, self.effect)
-        threading.Thread(target=self._prepare, args=(job, text, params, on_started),
+        params = (self.pitch, self.speed, self.volume, self.robotic)
+        threading.Thread(target=self._prepare, args=(job, text, style, params, on_started),
                          daemon=True).start()
 
-    def _prepare(self, job, text, params, on_started):
-        """Background thread: synthesise + filter + write the WAV."""
-        pitch, speed, volume, effect = params
+    def _prepare(self, job, text, style, params, on_started):
         try:
-            raw = self.engine.synth(text, wpm=BASE_WPM * speed, pitch=pitch)
-            samples = audio.robotize(raw, self.engine.rate, volume, effect, self.rng)
-            env = audio.envelope(samples, self.engine.rate, FRAME, PLAYBACK_LATENCY_FRAMES)
+            samples, rate = self._render(text, style, params)
+            env = audio.envelope(samples, rate, FRAME, PLAYBACK_LATENCY_FRAMES)
             fd, path = tempfile.mkstemp(prefix='robo-voice-', suffix='.wav', dir=self._dir)
             os.close(fd)
-            audio.write_wav(path, samples, self.engine.rate)
+            audio.write_wav(path, samples, rate)
         except Exception as e:  # noqa: BLE001 - never crash the robot over a voice problem
             log.warning('speech failed: %s', e)
             GLib.idle_add(self._finish, job)
             return
-        utt = Utterance(text, env, FRAME, len(samples) / self.engine.rate + 0.1)
+        utt = Utterance(text, env, FRAME, len(samples) / rate + 0.1)
         GLib.idle_add(self._play, job, path, utt, on_started)
 
     def _play(self, job, path, utt, on_started):
@@ -190,10 +318,14 @@ class EspeakVoice(SpeechOutput):
             kill(self._playing[1])
         self._finish(job)
 
+    def shutdown(self):
+        self.stop()
+        self.piper.shutdown()
+
 
 class SpdSayVoice(SpeechOutput):
-    """Fallback: the system's speech-dispatcher voice (no robot filter, and
-    the mouth moves to a made-up rhythm)."""
+    """Last resort: the system's speech-dispatcher voice (the mouth moves to
+    a made-up rhythm)."""
 
     def __init__(self):
         self.path = shutil.which('spd-say')
@@ -207,12 +339,12 @@ class SpdSayVoice(SpeechOutput):
         self.pitch, self.speed, self.volume = (settings.voice_pitch, settings.voice_speed,
                                                settings.voice_volume)
 
-    def say(self, text, on_started, on_done):
+    def say(self, text, on_started, on_done, style='normal'):
         self.stop()
         self._on_done = on_done
-        args = [self.path, '-w', '-p', str(int((self.pitch - 50) * 2)),
-                '-r', str(int((self.speed - 1) * 100)), '-i', str(int(self.volume * 200 - 100)),
-                text]
+        pitch = -60 if style == 'evil' else int((self.pitch - 50) * 2)
+        args = [self.path, '-w', '-p', str(pitch), '-r', str(int((self.speed - 1) * 100)),
+                '-i', str(int(self.volume * 200 - 100)), text]
         self._pid = spawn(args, self._done)
         duration = max(0.8, len(text.split()) / (2.6 * self.speed))
         frames = int(duration / FRAME)
@@ -232,7 +364,7 @@ class SpdSayVoice(SpeechOutput):
 
 
 def create_voice():
-    for cls in (EspeakVoice, SpdSayVoice):
+    for cls in (LinuxVoice, SpdSayVoice):
         try:
             voice = cls()
             log.info('voice: %s', cls.__name__)

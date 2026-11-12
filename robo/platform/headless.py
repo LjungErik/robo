@@ -109,14 +109,16 @@ class FakeVoice(SpeechOutput):
     def __init__(self, scheduler):
         self.scheduler = scheduler
         self.said = []
+        self.styles = []
         self.settings = None
         self._job = 0
 
     def configure(self, settings):
         self.settings = settings
 
-    def say(self, text, on_started, on_done):
+    def say(self, text, on_started, on_done, style='normal'):
         self.said.append(text)
+        self.styles.append(style)
         self._job += 1
         job = self._job
         duration = max(0.5, len(text.split()) * self.SECONDS_PER_WORD)
