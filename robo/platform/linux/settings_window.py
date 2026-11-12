@@ -1,0 +1,480 @@
+"""Robo's settings window (GTK 3), styled like Robo himself.
+
+The form is generated from robo.config.FIELDS, so adding a setting there
+adds it here automatically. Nothing changes until Apply is pressed; Apply
+calls on_apply(settings), which saves them and updates the running robot.
+
+The header shows Robo in his mechanic outfit tinkering with himself; he
+glows while there are unapplied changes and cheers when you apply them.
+"""
+import math
+import random
+import time
+
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+gi.require_foreign('cairo')
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+import cairo  # noqa: E402
+
+from robo.config import FIELDS, FIELDS_BY_KEY, SECTIONS, Settings  # noqa: E402
+from robo.core import layout  # noqa: E402
+from robo.core.bubble import Bubble  # noqa: E402
+from robo.core.characters import CHARACTERS  # noqa: E402
+from robo.core.effects import Effects  # noqa: E402
+from robo.core.pose import Pose  # noqa: E402
+from robo.render.robot import draw_robot  # noqa: E402
+from robo.render.scene import draw_frame  # noqa: E402
+from robo.render.shapes import INK, circle, hexc, paint  # noqa: E402
+
+HEADER_HEIGHT = 190
+CHIP_W, CHIP_H = 80, 92
+FRAME_MS = 33
+
+CSS = b"""
+.robo-settings { background-color: #EEF1F8; }
+.robo-settings label { color: #3B4060; }
+.robo-settings headerbar {
+    background-image: none; background-color: #8EE3CF;
+    border: none; border-bottom: 2px solid #3B4060; box-shadow: none;
+}
+.robo-settings headerbar .title { color: #3B4060; font-weight: 800; }
+.robo-settings headerbar .subtitle { color: #3B4060; opacity: 0.75; }
+.robo-card {
+    background-color: #FFFFFF; border: 2px solid #3B4060; border-radius: 20px;
+    padding: 14px 18px 16px 18px;
+}
+.robo-card-title { font-weight: 800; font-size: 13pt; }
+.robo-row-label { font-weight: 700; }
+.robo-help { color: #7A80A0; font-size: 9pt; }
+.robo-value {
+    background-color: #DCE4F0; border-radius: 10px; padding: 2px 10px;
+    font-weight: 800; color: #3B4060;
+}
+.robo-settings scale trough {
+    background-image: none; background-color: #DCE4F0; border: none;
+    border-radius: 6px; min-height: 10px;
+}
+.robo-settings scale highlight {
+    background-image: none; background-color: #8EE3CF; border: none; border-radius: 6px;
+}
+.robo-settings scale slider {
+    background-image: none; background-color: #FFFFFF; border: 2px solid #3B4060;
+    border-radius: 50%; min-width: 20px; min-height: 20px; box-shadow: none;
+}
+.robo-settings scale slider:hover { background-color: #FFD54F; }
+.robo-settings switch {
+    background-image: none; background-color: #DCE4F0; border: 2px solid #3B4060;
+    border-radius: 16px; color: transparent; font-size: 0;
+}
+.robo-settings switch:checked { background-color: #8EE3CF; }
+.robo-settings switch slider {
+    background-image: none; background-color: #FFFFFF; border: 2px solid #3B4060;
+    border-radius: 50%; min-width: 22px; min-height: 22px; box-shadow: none;
+}
+.robo-chip {
+    background-image: none; background-color: #F4F7FB; border: 2px solid #C9D1E3;
+    border-radius: 16px; padding: 4px 4px 6px 4px; box-shadow: none;
+}
+.robo-chip:hover { border-color: #3B4060; }
+.robo-chip:checked { background-color: #FFF1B8; border-color: #3B4060; }
+.robo-chip label { font-weight: 700; font-size: 9pt; }
+.robo-actions {
+    background-color: #FFFFFF; border-top: 2px solid #3B4060; padding: 10px 16px;
+}
+.robo-primary, .robo-secondary {
+    background-image: none; border: 2px solid #3B4060; border-radius: 16px;
+    padding: 6px 16px; box-shadow: none; text-shadow: none;
+}
+.robo-primary { background-color: #8EE3CF; }
+.robo-primary label { font-weight: 800; }
+.robo-primary:hover { background-color: #A8F0DE; }
+.robo-primary:disabled { background-color: #E3E8F2; border-color: #B7BFD3; }
+.robo-primary:disabled label { color: #9AA2B8; }
+.robo-secondary { background-color: #FFFFFF; }
+.robo-secondary:hover { background-color: #F4F7FB; }
+.robo-status { font-weight: 700; }
+"""
+
+BG_TOP = hexc('#D9F6EE')
+BG_BOTTOM = hexc('#EEF1F8')
+GEAR = hexc('#DCE4F0')
+GEAR_ACCENT = hexc('#FFD54F')
+_css_installed = False
+
+
+def _install_css():
+    global _css_installed
+    if _css_installed:
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    _css_installed = True
+
+
+def _style(widget, *classes):
+    ctx = widget.get_style_context()
+    for c in classes:
+        ctx.add_class(c)
+    return widget
+
+
+def _pass_scroll_to_page(widget, _event):
+    """Mouse wheel over a slider scrolls the page instead of changing the value.
+
+    Stopping the emission skips GtkScale's own scroll handler; returning
+    False lets the event continue up to the ScrolledWindow."""
+    widget.stop_emission_by_name('scroll-event')
+    return False
+
+
+def _gear(cr, cx, cy, r, teeth, angle, color):
+    cr.save()
+    cr.translate(cx, cy)
+    cr.rotate(angle)
+    cr.new_path()
+    step = math.pi / teeth
+    for i in range(teeth * 2):
+        cr.arc(0, 0, r if i % 2 == 0 else r * 0.78, i * step, (i + 1) * step)
+    cr.close_path()
+    paint(cr, color, INK, 2.2)
+    circle(cr, 0, 0, r * 0.3)
+    paint(cr, BG_BOTTOM, INK, 2)
+    cr.restore()
+
+
+class _Control:
+    """One setting's widgets: how to read it, write it, and its row."""
+
+    def __init__(self, row, get, set_):
+        self.row, self.get, self.set = row, get, set_
+
+
+class SettingsWindow:
+    def __init__(self):
+        self.win = None
+        self.on_apply = None
+        self.applied = None
+        self.snapshot = None         # form values right after loading (for "dirty")
+        self.controls = {}
+        self._loading = False
+        self._timer = None
+        self._hover = None
+        self._apply_time = -10.0
+        self._status_timer = None
+        self.t0 = self._last = time.monotonic()
+        self.effects = Effects(random.Random())
+
+    # ------------------------------------------------------------ public
+    def open(self, settings, on_apply):
+        self.on_apply = on_apply
+        if self.win is None:
+            self._build()
+        self.applied = settings
+        self._load(settings)
+        self.snapshot = self._read()
+        self._refresh()
+        self.win.show_all()
+        self.win.present()
+        if self._timer is None:
+            self._timer = GLib.timeout_add(FRAME_MS, self._animate)
+
+    # ------------------------------------------------------------ building
+    def _build(self):
+        _install_css()
+        w = self.win = Gtk.Window(title="Robo's Settings")
+        w.set_default_size(520, 780)
+        w.set_position(Gtk.WindowPosition.CENTER)
+        w.set_icon_name('face-smile')
+        _style(w, 'robo-settings')
+        w.connect('delete-event', self._on_close)
+
+        hb = Gtk.HeaderBar()
+        hb.set_show_close_button(True)
+        hb.set_title("Robo's Settings")
+        hb.set_subtitle('Tune your little robot')
+        w.set_titlebar(hb)
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.header = Gtk.DrawingArea()
+        self.header.set_size_request(-1, HEADER_HEIGHT)
+        self.header.connect('draw', self._draw_header)
+        root.pack_start(self.header, False, False, 0)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        for side in ('top', 'bottom', 'start', 'end'):
+            getattr(content, f'set_margin_{side}')(18)
+        for sid, title, emoji in SECTIONS:
+            fields = [f for f in FIELDS if f.section == sid]
+            if fields:
+                content.pack_start(self._card(title, emoji, fields), False, False, 0)
+        scroller.add(content)
+        root.pack_start(scroller, True, True, 0)
+        root.pack_start(self._action_bar(), False, False, 0)
+        w.add(root)
+
+    def _card(self, title, emoji, fields):
+        card = _style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12), 'robo-card')
+        head = _style(Gtk.Label(label=f'{emoji}  {title}', xalign=0), 'robo-card-title')
+        card.pack_start(head, False, False, 0)
+        for f in fields:
+            card.pack_start(self._row(f), False, False, 0)
+        return card
+
+    def _row(self, f):
+        row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        top.pack_start(_style(Gtk.Label(label=f.label, xalign=0), 'robo-row-label'), True, True, 0)
+        row.pack_start(top, False, False, 0)
+
+        if f.kind == 'bool':
+            sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+            sw.connect('notify::active', self._changed)
+            top.pack_end(sw, False, False, 0)
+            control = _Control(row, sw.get_active, sw.set_active)
+        elif f.kind in ('float', 'seconds'):
+            control = self._slider(f, row, top)
+        elif f.kind == 'characters':
+            control = self._character_chips(row)
+        else:
+            raise ValueError(f'unknown setting kind {f.kind!r}')
+
+        if f.help:
+            hint = _style(Gtk.Label(label=f.help, xalign=0), 'robo-help')
+            hint.set_line_wrap(True)
+            row.pack_start(hint, False, False, 0)
+        self.controls[f.key] = control
+        return row
+
+    def _slider(self, f, row, top):
+        value_label = _style(Gtk.Label(), 'robo-value')
+        top.pack_end(value_label, False, False, 0)
+        if f.kind == 'float':
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, f.min, f.max, f.step)
+            digits = 0 if f.step >= 1 else 1
+
+            def get():
+                return round(scale.get_value(), digits)
+
+            def set_(v):
+                scale.set_value(v)
+        else:   # 'seconds': slide over a list of friendly presets
+            opts = f.options
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, len(opts) - 1, 1)
+
+            def get():
+                return float(opts[int(round(scale.get_value()))])
+
+            def set_(v):
+                scale.set_value(min(range(len(opts)), key=lambda i: abs(opts[i] - v)))
+        scale.set_draw_value(False)
+        scale.connect('scroll-event', _pass_scroll_to_page)
+
+        def on_value(*_):
+            if f.kind == 'seconds':                 # snap to a preset
+                i = round(scale.get_value())
+                if abs(scale.get_value() - i) > 1e-6:
+                    scale.set_value(i)
+                    return
+            value_label.set_text(f.fmt(get()))
+            self._changed()
+        scale.connect('value-changed', on_value)
+        row.pack_start(scale, False, False, 0)
+
+        def set_and_label(v):
+            set_(v)
+            value_label.set_text(f.fmt(get()))
+        return _Control(row, get, set_and_label)
+
+    def _character_chips(self, row):
+        flow = Gtk.FlowBox()
+        flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        flow.set_min_children_per_line(3)
+        flow.set_max_children_per_line(3)
+        flow.set_homogeneous(True)
+        flow.set_column_spacing(8)
+        flow.set_row_spacing(8)
+        chips = {}
+        for cid, character in CHARACTERS.items():
+            btn = _style(Gtk.ToggleButton(), 'robo-chip')
+            btn.set_tooltip_text(f'Hover to see the {character.title.lower()} in action')
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            art = Gtk.DrawingArea()
+            art.set_size_request(CHIP_W, CHIP_H)
+            art.connect('draw', self._draw_chip, cid, btn)
+            inner.pack_start(art, False, False, 0)
+            inner.pack_start(Gtk.Label(label=character.title), False, False, 0)
+            btn.add(inner)
+            btn.connect('toggled', self._changed)
+            btn.connect('enter-notify-event', lambda *_a, c=cid: setattr(self, '_hover', c))
+            btn.connect('leave-notify-event', lambda *_a: setattr(self, '_hover', None))
+            flow.add(btn)
+            chips[cid] = (btn, art)
+        row.pack_start(flow, False, False, 0)
+        self._chip_art = [art for _btn, art in chips.values()]
+
+        def get():
+            return tuple(c for c, (b, _a) in chips.items() if b.get_active())
+
+        def set_(value):
+            for c, (b, _a) in chips.items():
+                b.set_active(c in value)
+        return _Control(row, get, set_)
+
+    def _action_bar(self):
+        bar = _style(Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8), 'robo-actions')
+        reset = _style(Gtk.Button(label='↺  Defaults'), 'robo-secondary')
+        reset.set_tooltip_text('Fill in the default values (press Apply to use them)')
+        reset.connect('clicked', lambda *_: self._load(Settings()))
+        self.status = _style(Gtk.Label(xalign=0.5), 'robo-status')
+        close = _style(Gtk.Button(label='Close'), 'robo-secondary')
+        close.connect('clicked', lambda *_: self._on_close())
+        self.apply_btn = _style(Gtk.Button(label='✓  Apply'), 'robo-primary')
+        self.apply_btn.connect('clicked', lambda *_: self._apply())
+        bar.pack_start(reset, False, False, 0)
+        bar.pack_start(self.status, True, True, 0)
+        bar.pack_end(self.apply_btn, False, False, 0)
+        bar.pack_end(close, False, False, 0)
+        return bar
+
+    # ------------------------------------------------------------ values
+    def _load(self, settings):
+        self._loading = True
+        try:
+            for key, control in self.controls.items():
+                control.set(getattr(settings, key))
+        finally:
+            self._loading = False
+        self._refresh()
+
+    def _read(self):
+        return self.applied.with_changes(**{k: c.get() for k, c in self.controls.items()})
+
+    @property
+    def dirty(self):
+        return self.snapshot is not None and self._read() != self.snapshot
+
+    def _changed(self, *_):
+        if not self._loading:
+            self._refresh()
+
+    def _refresh(self):
+        for key, control in self.controls.items():
+            dep = FIELDS_BY_KEY[key].depends
+            if dep:
+                control.row.set_sensitive(bool(self.controls[dep].get()))
+        dirty = self.dirty
+        self.apply_btn.set_sensitive(dirty)
+        if dirty:
+            self._set_status('Unapplied changes…')
+        elif self._status_timer is None:
+            self._set_status('')
+
+    def _set_status(self, text):
+        self.status.set_text(text)
+
+    def _apply(self):
+        settings = self._read()
+        self.on_apply(settings)
+        self.applied = settings
+        self.snapshot = self._read()
+        self._apply_time = time.monotonic()
+        self._refresh()
+        self._set_status('Applied! ✓')
+        if self._status_timer:
+            GLib.source_remove(self._status_timer)
+        self._status_timer = GLib.timeout_add(2500, self._clear_status)
+
+    def _clear_status(self):
+        self._status_timer = None
+        self._refresh()
+        return False
+
+    def _on_close(self, *_):
+        self.win.hide()
+        if self._timer is not None:
+            GLib.source_remove(self._timer)
+            self._timer = None
+        return True                  # keep the window around for next time
+
+    # ------------------------------------------------------------ animation
+    def _animate(self):
+        now = time.monotonic()
+        dt, self._last = min(0.1, now - self._last), now
+        if self._fixing(now):
+            self.effects.emit('sparks', now, dt, 1)
+        self.effects.update(now)
+        self.header.queue_draw()
+        if self._hover:
+            for art in self._chip_art:
+                art.queue_draw()
+        return True
+
+    def _fixing(self, now):
+        cycle = (now - self.t0) % 7.0
+        return 4.6 < cycle < 6.8 and now - self._apply_time > 1.8
+
+    def _draw_header(self, widget, cr):
+        now = time.monotonic()
+        t = now - self.t0
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        grad = cairo.LinearGradient(0, 0, 0, h)
+        grad.add_color_stop_rgba(0, *BG_TOP)
+        grad.add_color_stop_rgba(1, *BG_BOTTOM)
+        cr.set_source(grad)
+        cr.paint()
+        _gear(cr, w * 0.14, h * 0.45, 34, 10, t * 0.4, GEAR)
+        _gear(cr, w * 0.14 + 44, h * 0.45 + 34, 18, 8, -t * 0.75, GEAR_ACCENT)
+        _gear(cr, w * 0.86, h * 0.5, 28, 9, -t * 0.5, GEAR_ACCENT)
+        _gear(cr, w * 0.86 - 36, h * 0.5 - 30, 15, 7, t * 0.95, GEAR)
+
+        cheering = now - self._apply_time < 1.8
+        fixing = self._fixing(now)
+        hop = abs(math.sin((now - self._apply_time) / 0.6 * 2 * math.pi)) * 10 \
+            if now - self._apply_time < 0.6 else 0.0
+        blink = 0.1 if (t % 4.0) < 0.14 else 1.0
+        pose = Pose(t=t, costume='mechanic', lift=hop, openness=blink,
+                    mood='happy' if cheering else ('wince' if fixing else 'normal'),
+                    arms='up' if cheering else ('fix' if fixing else 'rest'),
+                    antenna='alert' if self.dirty else 'normal', alert_kind='warning',
+                    glow=(0.5 + 0.5 * math.sin(t * 6)) if self.dirty else 0.25,
+                    particles=self.effects.particles)
+        bubble = None
+        if now - self._apply_time < 1.8:
+            bubble = Bubble('heart', start=self._apply_time, until=self._apply_time + 1.6)
+            if now > bubble.until:
+                bubble.hide = bubble.until
+        scale = (h - 6) / layout.WINDOW_H
+        cr.save()
+        cr.translate(w / 2 - layout.WINDOW_W * scale / 2, 2)
+        cr.push_group()
+        draw_frame(cr, scale, pose, bubble, now)
+        cr.pop_group_to_source()
+        cr.paint()
+        cr.restore()
+        return False
+
+    def _draw_chip(self, widget, cr, cid, btn):
+        now = time.monotonic()
+        t = now - self.t0
+        character = CHARACTERS[cid]
+        hovered = self._hover == cid
+        pose = Pose(t=t if hovered else 0.3, costume=cid,
+                    arms=character.move if hovered else 'rest',
+                    mood=character.move_mood if hovered else 'normal')
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        s = (h - 4) / 165
+        cr.save()
+        cr.translate(w / 2, h - 3)
+        cr.scale(s, s)
+        cr.push_group()
+        draw_robot(cr, pose)
+        cr.pop_group_to_source()
+        cr.paint_with_alpha(1.0 if btn.get_active() else 0.35)
+        cr.restore()
+        return False

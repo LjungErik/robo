@@ -1,0 +1,63 @@
+"""Linux back end: GTK 3 window (via XWayland), D-Bus, sysfs.
+
+Pieces, each replaceable on its own:
+    mainloop.py       GLib main loop                       -> Scheduler
+    gtk_window.py     transparent click-through window     -> WindowHost
+    notifications.py  desktop notifications (D-Bus)        -> EventSource
+    battery.py        /sys/class/power_supply              -> EventSource
+    network.py        NetworkManager (D-Bus)               -> EventSource
+    updates.py        apt / snap / flatpak                 -> EventSource
+    idle.py           GNOME Mutter idle monitor (D-Bus)    -> IdleMonitor
+    instance.py       lock file                            -> single instance
+    settings_window.py the themed settings window          -> open_settings()
+"""
+import os
+
+# Wayland does not let apps position their own windows; XWayland does.
+# Must be set before GTK is imported.
+os.environ['GDK_BACKEND'] = 'x11'
+
+from robo.platform.base import Platform  # noqa: E402
+
+
+class LinuxPlatform(Platform):
+    name = 'linux'
+
+    def create_scheduler(self):
+        from .mainloop import GLibScheduler
+        return GLibScheduler()
+
+    def create_window(self, width, height, listener):
+        from .gtk_window import GtkWindowHost
+        return GtkWindowHost(width, height, listener)
+
+    def event_sources(self, settings):
+        from .battery import BatteryWatcher
+        from .network import NetworkWatcher
+        from .notifications import NotificationWatcher
+        from .updates import UpdateWatcher
+        # The update watcher always exists so it can be switched on/off live.
+        return [NotificationWatcher(), BatteryWatcher(), NetworkWatcher(),
+                UpdateWatcher(enabled=settings.check_updates)]
+
+    def idle_monitor(self):
+        from .idle import MutterIdleMonitor
+        return MutterIdleMonitor.create()
+
+    def acquire_single_instance(self):
+        from .instance import acquire_lock
+        return acquire_lock()
+
+    def config_dir(self):
+        base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+        return os.path.join(base, 'robo')
+
+    @property
+    def has_settings_window(self):
+        return True
+
+    def open_settings(self, settings, on_apply):
+        if getattr(self, '_settings_window', None) is None:
+            from .settings_window import SettingsWindow
+            self._settings_window = SettingsWindow()
+        self._settings_window.open(settings, on_apply)
