@@ -12,7 +12,8 @@ GAP = 0.35                       # pause between two bubbles
 DEDUP_SECONDS = 60
 MAX_QUEUE = 10
 TALK_ICONS = frozenset({'mic', 'thinking'})      # shown during conversations
-BUBBLE_KINDS = frozenset(KINDS) | DEMAND_ICONS | TALK_ICONS   # every icon a bubble can show
+TASK_ICONS = frozenset({'task_done'})            # see robo.core.personality
+BUBBLE_KINDS = frozenset(KINDS) | DEMAND_ICONS | TALK_ICONS | TASK_ICONS  # every bubble icon
 
 
 def ease_out_back(x):

@@ -704,6 +704,28 @@ def icon_thinking(cr, t):
         paint(cr, INK, None)
 
 
+# ---------------------------------------------------------------- tasks
+def icon_task_done(cr, t):
+    """Task finished: a green laptop screen with a big check mark."""
+    rrect(cr, 7, 9, 34, 24, 4)
+    paint(cr, hexc('#22253A'))
+    rrect(cr, 3, 33, 42, 6, 3)
+    paint(cr, hexc('#E3D9BF'))
+    k = min(1.0, t * 2.5)                 # the check draws itself
+    pts = [(15, 21), (21, 27), (33, 14)]
+    if k < 0.4:
+        a = k / 0.4
+        seg = [pts[0], (pts[0][0] + (pts[1][0] - pts[0][0]) * a,
+                        pts[0][1] + (pts[1][1] - pts[0][1]) * a)]
+    else:
+        a = (k - 0.4) / 0.6
+        seg = [pts[0], pts[1], (pts[1][0] + (pts[2][0] - pts[1][0]) * a,
+                                pts[1][1] + (pts[2][1] - pts[1][1]) * a)]
+    line(cr, seg, GREEN, 3.6)
+    tw = 0.7 + 0.3 * math.sin(t * 6)
+    sparkle(cr, 42, 7, 5 * tw)
+
+
 # name -> (draw function, accent colour used for the robot's antenna)
 ICONS = {
     'battery_low': (icon_battery_low, RED),
@@ -741,6 +763,8 @@ ICONS = {
     # conversation
     'mic': (icon_mic, SKY),
     'thinking': (icon_thinking, YELLOW),
+    # tasks
+    'task_done': (icon_task_done, GREEN),
 }
 
 

@@ -501,3 +501,145 @@ class VoiceStyleTest(unittest.TestCase):
         soft = audio.soften(samples, 22050, volume=0.5)
         self.assertEqual(soft[0], 0)                     # faded in: no click
         self.assertEqual(max(soft), 500)
+
+
+class TaskManagerTest(unittest.TestCase):
+    def setUp(self):
+        from robo.tasks import PlaceholderTask, TaskManager
+        self.Task = PlaceholderTask
+        self.m = TaskManager()
+
+    def test_runs_one_and_queues_the_rest(self):
+        a, b = self.Task(10), self.Task(10)
+        self.assertEqual(self.m.submit(a, 0), 'started')
+        self.assertEqual(self.m.submit(b, 0), 'queued')
+        self.m.update(0)
+        self.assertEqual(self.m.update(10.5), [('finished', a), ('started', b)])
+        self.m.update(21)
+        self.assertFalse(self.m.busy)
+
+    def test_pause_does_not_count_as_work(self):
+        a = self.Task(10)
+        self.m.submit(a, 0)
+        self.m.set_paused('conversation', True, 4)
+        self.m.set_paused('held', True, 5)
+        self.m.set_paused('conversation', False, 50)
+        self.assertFalse(self.m.working)                 # still held
+        self.m.set_paused('held', False, 100)
+        self.assertAlmostEqual(a.progress(103), 0.7)
+        self.m.update(105)
+        self.assertEqual(a.state, 'running')
+        self.m.update(106.5)
+        self.assertEqual(a.state, 'done')
+
+    def test_abort_current_starts_the_next_and_abort_all_clears(self):
+        a, b, c = self.Task(10), self.Task(10), self.Task(10)
+        for t in (a, b, c):
+            self.m.submit(t, 0)
+        self.assertEqual(self.m.abort(1), [a])
+        self.assertEqual(self.m.current, b)
+        self.m.abort_all(2)
+        self.assertFalse(self.m.busy)
+        self.assertEqual({a.state, b.state, c.state}, {'aborted'})
+
+    def test_parallel_slots(self):
+        from robo.tasks import TaskManager
+        m = TaskManager(max_parallel=2)
+        a, b = self.Task(10), self.Task(10)
+        m.submit(a, 0)
+        self.assertEqual(m.submit(b, 0), 'started')
+        self.assertEqual(len(m.running), 2)
+
+
+class TaskBrainTest(unittest.TestCase):
+    def setUp(self):
+        from robo.conversation import Context, RuleBrain
+        self.brain = RuleBrain(random.Random(1))
+        self.idle = Context()
+        self.busy = Context(task='a top secret task', task_progress=0.42)
+
+    def test_task_phrases(self):
+        r = self.brain.respond('can you do a task for me', self.idle)
+        self.assertEqual(r.action, 'start_task')
+        self.assertTrue(r.end)
+        self.assertEqual(self.brain.respond('abort task', self.busy).action, 'abort_task')
+        self.assertEqual(self.brain.respond('stop the task', self.busy).action, 'abort_task')
+        self.assertIsNone(self.brain.respond('abort task', self.idle).action)
+        self.assertIn('42 percent', self.brain.respond("how's the task going", self.busy).text)
+
+    def test_no_costumes_while_working(self):
+        self.assertIsNone(self.brain.respond('dress up as a pirate', self.busy).action)
+
+
+class HackerTaskTest(unittest.TestCase):
+    def setUp(self):
+        self.robot, self.p = make_robot(dress_up_every=10, evil_after=5)
+
+    def chat(self, said):
+        self.robot.talk()
+        for _ in range(200):
+            if self.p.ears.listening:
+                break
+            self.p.scheduler.advance(0.1)
+        self.p.ears.hear(said)
+
+    def test_do_a_task_hacks_then_finishes(self):
+        self.chat('do a task')
+        self.assertTrue(self.robot.tasks.busy)
+        self.p.scheduler.advance(8)                      # says "on it", conversation ends
+        self.assertFalse(self.robot.conversation.active)
+        self.assertTrue(self.robot.hacker.typing)
+        from robo.core.pose import build_pose
+        pose = build_pose(self.robot, self.p.clock())
+        self.assertEqual((pose.costume, pose.arms), ('hacker', 'type'))
+        for i in range(70):                              # 2+ min, user away the whole time
+            if not self.robot.tasks.busy:
+                break
+            self.assertFalse(self.robot.evil.active)
+            self.assertIsNone(self.robot.wardrobe.current)
+            self.p.idle.feed(30 + i * 2)
+            self.p.scheduler.advance(2)
+        self.assertFalse(self.robot.tasks.busy)
+        self.assertEqual(self.robot.bubbles.current.kind, 'task_done')
+        self.p.scheduler.advance(1)
+        self.assertFalse(self.robot.hacker.dressed)
+
+    def test_talking_pauses_the_task_and_it_resumes_after(self):
+        self.robot.start_task()
+        self.p.scheduler.advance(10)
+        task = self.robot.tasks.current
+        done = task.worked_seconds(self.p.clock())
+        self.robot.talk()                                # interrupt
+        self.p.scheduler.advance(1)
+        self.assertFalse(self.robot.hacker.typing)
+        self.assertTrue(self.robot.hacker.dressed)       # still the hacker, just standing
+        self.p.scheduler.advance(5)
+        self.assertAlmostEqual(task.worked_seconds(self.p.clock()), done, delta=0.1)
+        self.robot.conversation.stop()
+        self.p.scheduler.advance(5)
+        self.assertGreater(task.worked_seconds(self.p.clock()), done + 4)
+        self.assertTrue(self.robot.hacker.typing)
+
+    def test_abort_task_by_voice(self):
+        self.robot.start_task()
+        self.p.scheduler.advance(10)
+        self.chat('abort task')
+        self.p.scheduler.advance(2)
+        self.assertFalse(self.robot.tasks.busy)
+        self.assertFalse(self.robot.hacker.dressed)
+
+    def test_asking_again_queues_a_second_task(self):
+        self.robot.start_task()
+        self.assertEqual(self.robot.start_task(), 'queued')
+        self.assertEqual(len(self.robot.tasks.queued), 1)
+
+    def test_menu_offers_task_and_abort(self):
+        def labels():
+            self.robot.pointer_press(PointerEvent(3, 85, 200, 0, 0))
+            return [i.label or '' for i in self.p.window.menus[-1]]
+        self.assertTrue(any('Do a task' in l for l in labels()))
+        self.robot.start_task()
+        self.p.scheduler.advance(1)
+        ls = labels()
+        self.assertTrue(any('Abort task' in l for l in ls))
+        self.assertFalse(any('Dress up' in l for l in ls))

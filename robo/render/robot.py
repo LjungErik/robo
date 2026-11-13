@@ -14,7 +14,7 @@ import random
 import cairo
 
 from .anatomy import ANTENNA_TOP, HEAD_TOP  # noqa: F401  (re-exported)
-from .costumes import NO_OUTFIT, OUTFITS
+from .costumes import NO_OUTFIT, OUTFITS, WORK_OUTFITS
 from .icons import ICONS
 from .shapes import GREY, INK, PINK, circle, ellipse, heart_path, hexc, paint, rrect
 
@@ -34,6 +34,9 @@ RED_E = hexc('#E8344B')
 SCREEN_E = hexc('#2C0C16')
 EYE_E = hexc('#FF3B4E')
 SWEAT = hexc('#9FDcFF')
+HACK_GREEN = hexc('#39FF7A')
+
+SIT_DROP = 12           # how far his body sinks when he sits down
 
 def lerp(a, b, k):
     return tuple(x + (y - x) * k for x, y in zip(a, b))
@@ -105,6 +108,9 @@ def _arm_angles(arms, t, phase):
         return 1.35 + math.sin(t * 3) * 0.08, -1.65
     if arms == 'paw':                        # kitty: batting at the yarn
         return 0.25, -0.9 + math.sin(t * 9) * 0.35
+    if arms == 'type':                       # hacker: hands hammering the keyboard
+        k = math.sin(t * 26) * 0.09
+        return 0.22 + k, -0.22 + k
     b = math.sin(t * 2.2) * 0.05
     return 0.2 + b, -0.2 - b
 
@@ -287,7 +293,7 @@ def antenna_color(p):
     """The antenna glows in the colour of whatever the robot is reporting."""
     if p.antenna == 'alert':
         return ICONS.get(p.alert_kind, ICONS['bell'])[1]
-    return {'evil': EYE_E, 'sleep': GREY}.get(p.antenna, BUTTER)
+    return {'evil': EYE_E, 'sleep': GREY, 'hack': HACK_GREEN}.get(p.antenna, BUTTER)
 
 
 def draw_robot(cr, p):
@@ -300,7 +306,9 @@ def draw_robot(cr, p):
     mood = p.mood
     look = p.look
     arms = p.arms
-    outfit = OUTFITS.get(p.costume, NO_OUTFIT)
+    outfit = OUTFITS.get(p.costume) or WORK_OUTFITS.get(p.costume, NO_OUTFIT)
+    sit = smooth(p.sit)
+    drop = sit * SIT_DROP
     e = max(0.0, min(1.0, p.evil))
     glitch = p.glitch
 
@@ -339,21 +347,28 @@ def draw_robot(cr, p):
         bob = (math.sin(t * 2.2) + 1) * 0.7
     if mood == 'laugh':
         bob += abs(math.sin(t * 22)) * 2.5
+    bob *= 1 - sit
 
     # ---- OUTFIT LAYER: behind everything, even the legs (capes, tails)
     if outfit.behind:
         cr.save()
-        cr.translate(0, -bob)
+        cr.translate(0, -bob + drop)
         outfit.behind(cr, p)
         cr.restore()
 
-    for lx, ll in ((-11, legA), (11, legB)):
-        rrect(cr, lx - 5, -21 - ll, 10, 15, 4)
-        paint(cr, shade)
-        ellipse(cr, lx + 2, -5 - ll, 8.5, 5)
-        paint(cr, accent)
+    if sit > 0.5:                            # sitting cross-legged: feet poke out sideways
+        for side in (-1, 1):
+            ellipse(cr, side * 22, -5, 8.5, 5)
+            paint(cr, accent)
+    else:
+        for lx, ll in ((-11, legA), (11, legB)):
+            rrect(cr, lx - 5, -21 - ll + drop, 10, 15 - drop, 4)
+            paint(cr, shade)
+            ellipse(cr, lx + 2, -5 - ll, 8.5, 5)
+            paint(cr, accent)
 
-    cr.translate(0, -bob)
+    cr.save()                                # upper body (bobs, sinks when sitting)
+    cr.translate(0, -bob + drop)
 
     # ---- arms (behind the body unless the gesture is in front)
     aL, aR = _arm_angles(arms, t, phase)
@@ -486,6 +501,11 @@ def draw_robot(cr, p):
     # ---- OUTFIT LAYER: in front of everything (toys)
     if outfit.front:
         outfit.front(cr, p)
+    cr.restore()  # upper body
+
+    # ---- OUTFIT LAYER: on the floor in front of him (the hacker's laptop)
+    if outfit.ground:
+        outfit.ground(cr, p)
     cr.restore()
 
 

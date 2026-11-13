@@ -8,6 +8,7 @@ from .shapes import INK, PINK, WHITE, YELLOW, circle, ellipse, heart_path, hexc,
 NUMBER_COLOURS = (hexc('#2F9E5B'), hexc('#3D6FD9'), hexc('#E5484D'))
 NOTE = hexc('#FF7AB6')
 STAR = hexc('#FFE27A')
+PHOSPHOR = hexc('#2BD96B')                 # green ones and zeros from the laptop
 MAGIC = (hexc('#B98CFF'), hexc('#FF7AB6'), hexc('#7DF3FF'), hexc('#FFD23F'))
 
 
@@ -38,7 +39,7 @@ def draw_particles(cr, particles, now):
             cr.set_font_size(10 + k * 3)
             cr.move_to(x, y)
             cr.text_path(pt.glyph)
-            col = NUMBER_COLOURS[i % len(NUMBER_COLOURS)]
+            col = PHOSPHOR if pt.glyph in '01' else NUMBER_COLOURS[i % len(NUMBER_COLOURS)]
             paint(cr, col, WHITE, 2.5)
             cr.move_to(x, y)
             cr.text_path(pt.glyph)

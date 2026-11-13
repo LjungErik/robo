@@ -23,13 +23,14 @@ class EvilMode:
     def enabled(self):
         return self.after > 0
 
-    def on_idle(self, seconds, now):
-        """Feed the user's idle time. Returns 'evil', 'good' or None."""
+    def on_idle(self, seconds, now, may_turn_evil=True):
+        """Feed the user's idle time. Returns 'evil', 'good' or None.
+        may_turn_evil=False keeps him good for now (e.g. he's working on a task)."""
         if not self.enabled:
             return None
         change = None
         if not self.active:
-            if seconds >= self.after and not self.is_inhibited():
+            if seconds >= self.after and may_turn_evil and not self.is_inhibited():
                 self.active = True
                 self.glitch_until = now + GLITCH_TO_EVIL
                 change = 'evil'
@@ -39,6 +40,14 @@ class EvilMode:
             change = 'good'
         self.last_idle = seconds
         return change
+
+    def calm_down(self, now):
+        """Turn good right away. Returns 'good' if he was evil."""
+        if not self.active:
+            return None
+        self.active = False
+        self.glitch_until = now + GLITCH_TO_GOOD
+        return 'good'
 
     def set_after(self, after_seconds, now):
         """Change the delay live. Returns 'good' if this switched evil mode off."""

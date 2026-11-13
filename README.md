@@ -87,7 +87,7 @@ A single click while he's chatting hushes him.
 
 Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
 *"dress up as a pirate"*, *"dance!"*, *"sing a song"*, *"you're so cute"*,
-*"take a nap"*, *"goodbye"*.
+*"take a nap"*, *"do a task"*, *"abort task"*, *"goodbye"*.
 
 - While he listens his bubble shows a 🎤, and while he thinks a ⚙️.
 - Turn on **Listen for "Hey Robo"** in Settings to start a chat by voice.
@@ -109,6 +109,35 @@ answer, add a row to `RULES`. To swap in an LLM later, write a
 `robo.conversation.Brain` subclass whose `ask()` answers in the background, and
 pass it in `robo/app.py` where `RuleBrain()` is used today.
 
+## Tasks 💻
+
+Ask Robo to **"do a task"** (or right-click → **Do a task**) and he changes into
+his 80s hacker outfit: walkman headphones, big square glasses and a dark jacket.
+Then he sits down at his beige laptop and types away while green ones and zeros
+fly up. For now the task is a placeholder that takes 1-2 minutes. When it's done
+he cheers and shows a ✅ laptop bubble, then changes back.
+
+- **Interrupt him** any time: double-click to talk, or pick him up. He stops working,
+  stands up with the laptop under his arm and helps you. When you're done he sits
+  back down and picks up where he left off. Time spent chatting doesn't count.
+- Say **"abort task"** (or "stop the task", or right-click → **Abort task**) and he
+  drops it completely.
+- **"How's the task going?"** tells you how far along he is.
+- Ask for another task while he's busy and it's queued up for after the current one.
+  "Abort all tasks" drops the whole queue.
+- The hacker outfit is only for work: he never picks it at random, doesn't dress up
+  as anything else, and doesn't turn evil while he has a task.
+
+How it works: `robo/tasks/` is pure logic. `Task` (`base.py`) has the lifecycle
+(start, pause, resume, abort, done), `TaskManager` (`manager.py`) runs
+`max_parallel` tasks at once (1 today), queues the rest, and pauses for each
+interruption reason (`'conversation'`, `'held'`). `catalog.py` lists the kinds of
+task. To add a real one: subclass `Task`, implement `is_done()` (and `progress()`),
+register it in `TASK_KINDS`, and add a phrase to `RuleBrain` that replies with
+`action='start_task', action_arg='<kind>'`. `robo/core/hacker.py` decides how he
+looks (outfit, sitting, typing). Its outfit is in `WORK_OUTFITS` in
+`robo/render/costumes.py`.
+
 ## Interacting
 
 | Action        | Result                                   |
@@ -116,7 +145,7 @@ pass it in `robo/app.py` where `RuleBrain()` is used today.
 | Left-click    | Pat him (hearts!), dismiss the bubble, end his costume, or hush him |
 | Double-click  | Talk to him |
 | Drag          | Pick him up; he falls back down when you let go |
-| Right-click   | Menu: wave, nap / wake, dress up, talk, settings, show all icons, quit |
+| Right-click   | Menu: wave, do / abort a task, nap / wake, dress up, talk, settings, show all icons, quit |
 
 ## What triggers a bubble
 
@@ -156,6 +185,7 @@ robo/
   settings_store.py       settings.json load / save / change detection
   audio.py                voice effects (robot filter, chirps, mouth envelope)
   conversation/           his brain: Brain interface + RuleBrain (keyword switch)
+  tasks/                  work you give him: Task lifecycle, TaskManager (queue, pauses), catalog
   events.py               Event, list of KINDS, classify() for notification text
   core/                   the robot itself, pure Python (no GUI or OS calls)
     companion.py          ties everything together; the only thing the platform talks to
@@ -165,6 +195,7 @@ robo/
     evil.py               when to turn evil / good, colour blend, glitch
     characters.py         the dress-up characters: move, demand, walk style
     wardrobe.py           when he dresses up, the poof, signature-move timing
+    hacker.py             hacker mode while he has a task: outfit on/off, sitting, typing
     effects.py            particles (numbers, notes, sparks)
     bubble.py             speech bubble queue, duplicates, pop animation
     talk.py               conversations: listen → think → speak → listen

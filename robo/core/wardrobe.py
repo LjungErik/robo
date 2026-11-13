@@ -67,6 +67,13 @@ class Wardrobe:
         if self.current is not None:
             self._begin_poof(now, False)
 
+    def clear(self, now):
+        """Take the costume off instantly, no poof (another outfit covers the change)."""
+        self.current = None
+        self._swap_to = self._swap_at = None
+        self.stop_move()
+        self.next_change = now + self._wait()
+
     def _begin_poof(self, now, target):
         self.poof_start = now
         self._swap_to = target

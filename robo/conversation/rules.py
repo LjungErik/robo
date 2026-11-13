@@ -50,6 +50,16 @@ class RuleBrain(Brain):
         self.rng = rng or random.Random()
         # ( topic, pattern, handler(text, ctx) -> Reply )   -- checked in order
         self.RULES = [
+            # tasks first: "stop the task" must not be heard as "stop talking"
+            ('abort_task', _words('abort', 'abort task', 'cancel the task', 'cancel task',
+                                  'cancel tasks', 'stop the task', 'stop task', 'abandon',
+                                  'forget the task', 'forget about the task'), self.abort_task),
+            ('task_status', _words('task status', 'how is the task', "how's the task",
+                                   'how is your task', 'how is it going with the task',
+                                   'are you done', 'are you finished', 'progress'),
+             self.task_status),
+            ('do_task', _words('do a task', 'do task', 'new task', 'another task', 'a task',
+                               'start a task', 'task'), self.do_task),
             ('goodbye', _words('bye', 'goodbye', 'good bye', 'see you', 'stop talking',
                                "that's all", 'that is all', 'never mind', 'nevermind',
                                'go away', 'quiet', 'shush', 'be quiet'), self.goodbye),
@@ -95,6 +105,10 @@ class RuleBrain(Brain):
 
     # ------------------------------------------------------------ Brain
     def greeting(self, ctx):
+        if ctx.task:
+            return Reply(self._pick("Pausing my task. I'm all ears! What's up?",
+                                    'Hold on, saving my work... Okay! What can I do for you?'),
+                         'happy', action='wave')
         if ctx.evil:
             return Reply("Oh! You caught me plotting. I mean... hi! What's up?", 'surprised')
         if ctx.costume:
@@ -147,7 +161,43 @@ class RuleBrain(Brain):
 
     def abilities(self, text, ctx):
         return Reply('I can tell jokes, tell you the time, check your battery, dance, sing, '
-                     'and dress up. Try saying: dress up as a pirate!', 'happy')
+                     'dress up, and do tasks for you. Try saying: do a task!', 'happy')
+
+    # ------------------------------------------------------------ tasks
+    def do_task(self, text, ctx):
+        if ctx.task:
+            return Reply("I'm still busy with my current task, so I'll queue that one up next!",
+                         'happy', action='start_task', end=True)
+        return Reply(self._pick("On it! Hacker mode, activate! I'll get back to you when "
+                                "it's done.",
+                                "You got it! Time to hack. Beep boop, I'm in!"),
+                     'happy', action='start_task', end=True)
+
+    def abort_task(self, text, ctx):
+        if not ctx.task:
+            return Reply("I'm not working on anything right now. Want to give me a task?",
+                         'normal')
+        everything = ctx.tasks_waiting and _words('all', 'every', 'everything').search(text)
+        if everything:
+            return Reply('Okay! Dropping all my tasks. Deleting the evidence. Beep!',
+                         'surprised', action='abort_task', action_arg='all')
+        if ctx.tasks_waiting:
+            return Reply("Okay, I'll abandon that one and start on the next task.",
+                         'surprised', action='abort_task')
+        return Reply(self._pick('Task aborted! Unplugging the mainframe. Beep!',
+                                'Okay, forget it. Abandoning the task!'),
+                     'surprised', action='abort_task')
+
+    def task_status(self, text, ctx):
+        if not ctx.task:
+            return Reply("I don't have a task right now. Just say: do a task!", 'normal')
+        waiting = (f' And {ctx.tasks_waiting} more waiting after that.'
+                   if ctx.tasks_waiting else '')
+        if ctx.task_progress is None:
+            return Reply(f"I'm still working on it!{waiting}", 'focus')
+        pct = int(ctx.task_progress * 100)
+        return Reply(f"I'm about {pct} percent done. I'll finish once we're done chatting!"
+                     f'{waiting}', 'focus')
 
     def time(self, text, ctx):
         t = ctx.now.strftime('%I:%M %p').lstrip('0')
@@ -176,6 +226,9 @@ class RuleBrain(Brain):
         return Reply(self._pick(*JOKES) + ' Ha ha, beep!', 'happy', action='hearts')
 
     def dress_up(self, text, ctx):
+        if ctx.task:
+            return Reply("I can't change clothes now, I'm in the middle of a task! "
+                         'Say abort task if you want me to stop.', 'focus')
         wanted = next((cid for cid, words in CHARACTER_WORDS.items()
                        if _words(*words).search(text)), None)
         if wanted is None:
@@ -190,6 +243,9 @@ class RuleBrain(Brain):
                      'happy', action='dress_up', action_arg=wanted)
 
     def undress(self, text, ctx):
+        if ctx.task:
+            return Reply("This is my hacker outfit! It comes off when my task is done.",
+                         'happy')
         if not ctx.costume:
             return Reply('This is just me! No costume. Beep.', 'happy')
         return Reply('Okay, back to plain old Robo!', 'happy', action='undress')

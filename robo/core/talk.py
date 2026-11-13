@@ -104,10 +104,15 @@ class Conversation:
 
     def context(self):
         r = self.robot
+        task = r.tasks.current
+        now = r.clock()
         return Context(now=datetime.now(), battery=self.battery(),
                        costume=r.wardrobe.current.id if r.wardrobe.current else None,
                        evil=r.evil.active, characters=tuple(r.settings.characters),
-                       turn=self.turn)
+                       turn=self.turn,
+                       task=task.title if task else None,
+                       task_progress=task.progress(now) if task else None,
+                       tasks_waiting=len(r.tasks.queued))
 
     # ------------------------------------------------------------ control
     def start(self):

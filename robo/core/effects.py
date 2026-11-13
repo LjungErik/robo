@@ -34,10 +34,19 @@ EMITTERS = {
     # colourful sparkles out of the wizard's wand tip
     'magic': (12.0, lambda rng, f: ('magic', 0.8, f * 34, -84, f * rng.uniform(-10, 34),
                                     rng.uniform(-36, 14))),
+    # green ones and zeros rising from the hacker's laptop
+    # (out past the sides of his head, so his face stays visible)
+    'binary': (4.0, lambda rng, f: _binary(rng)),
     # little hearts while the kitty plays
     'hearts': (1.6, lambda rng, f: ('heart', 1.5, f * rng.uniform(14, 30), -46,
                                     f * rng.uniform(0, 10), rng.uniform(-30, -18))),
 }
+
+
+def _binary(rng):
+    side = rng.choice((-1, 1))
+    return (rng.choice('01'), 1.4, side * rng.uniform(24, 32), -36,
+            side * rng.uniform(10, 20), rng.uniform(-30, -20))
 
 
 class Effects:

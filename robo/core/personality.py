@@ -7,6 +7,8 @@ bubble pops up, you pat him, or he changes clothes.
 from . import face as F
 from .characters import DEMAND_ICONS
 
+TASK_DONE_ICON = 'task_done'
+
 NAP_CHANCE = 0.10
 NAP_COOLDOWN = 240          # seconds between naps
 WAVE_CHANCE = 0.12
@@ -23,7 +25,9 @@ DEMAND_SECONDS = 5.0
 # ---------------------------------------------------------------- free time
 def next_action(robot, now):
     """Called when the robot has been idle long enough."""
-    if robot.evil.active:
+    if robot.busy_working:
+        robot.body.rest(now, 4, 8)          # stays at his laptop
+    elif robot.evil.active:
         _next_evil_action(robot, now)
     elif robot.wardrobe.current:
         _next_costumed_action(robot, now)
@@ -139,7 +143,7 @@ def on_turned_good(robot, now):
 def should_dress_up(robot, now):
     """Dress up on his own only when he's free: awake, good, nothing to say."""
     return (robot.wardrobe.due(now) and robot.body.on_ground and robot.body.state != 'sleep'
-            and not robot.evil.active and not robot.bubbles.busy)
+            and not robot.evil.active and not robot.bubbles.busy and not robot.busy_working)
 
 
 def on_dressed(robot, now):
@@ -205,16 +209,55 @@ def on_reply(robot, reply, now):
             body.hop(now)
             face.add_hearts(now, (0.5, 1.5))
     elif action == 'dress_up' and reply.action_arg:
-        wardrobe.dress_up(now, reply.action_arg)
-    elif action == 'undress':
+        robot.dress_up(reply.action_arg)        # ignored while he's hacking
+    elif action == 'undress' and not robot.busy_working:
         robot.bubbles.discard(DEMAND_ICONS, now)
         wardrobe.undress(now)
+    elif action == 'start_task':
+        robot.start_task(reply.action_arg)
+    elif action == 'abort_task':
+        robot.abort_task(everything=reply.action_arg == 'all')
 
 
 def on_conversation_ended(robot, last_reply, now):
     if last_reply is not None and last_reply.action == 'nap':
         robot.body.sleep(now, robot.rng.uniform(40, 70))
     else:
+        robot.body.rest(now, 3, 6)
+
+
+# ---------------------------------------------------------------- tasks
+def on_task_given(robot, now):
+    """You asked him to do something: no evil plans or costumes while working."""
+    if robot.evil.calm_down(now) == 'good':
+        on_turned_good(robot, now)
+    robot.body.wake(now)
+    robot.wardrobe.stop_move()
+    robot.bubbles.discard(DEMAND_ICONS, now)
+    robot.face.show(F.HAPPY, now, 1.2)
+
+
+def on_task_event(robot, event, task, now):
+    face = robot.face
+    if event == 'finished':
+        robot.bubbles.push(TASK_DONE_ICON, now, duration=5.0, dedup=False)
+        face.show(F.ARMS_UP, now, 1.6)
+        face.show(F.HAPPY, now, 2.0)
+        face.add_hearts(now, (0.2, 0.5))
+    elif event == 'aborted':
+        face.show(F.SURPRISED, now, 0.5)
+
+
+def on_hacker_dressed(robot, now):
+    robot.wardrobe.clear(now)              # the hacker outfit replaces any costume
+    robot.face.show(F.HAPPY, now, 1.0)
+    robot.body.hop(now)
+
+
+def on_hacker_undressed(robot, now):
+    robot.face.show(F.HAPPY, now, 1.2)
+    robot.body.hop(now)
+    if robot.body.on_ground:
         robot.body.rest(now, 3, 6)
 
 

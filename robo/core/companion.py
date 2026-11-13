@@ -14,6 +14,7 @@ import time
 from robo.events import KINDS, Event
 from robo.platform.base import MenuItem, PointerEvent, WindowHost
 from robo.render.scene import draw_frame
+from robo.tasks import TaskManager, make_task
 
 from . import layout, personality
 from .body import Body
@@ -22,6 +23,7 @@ from .evil import EvilMode
 from .characters import CHARACTERS
 from .effects import Effects
 from .face import WAVE, Face
+from .hacker import HackerMode
 from .pose import build_pose
 from .talk import Conversation
 from .wardrobe import Wardrobe
@@ -48,6 +50,8 @@ class Companion:
         self.wardrobe = Wardrobe(settings.effective_dress_up_every, now, self.rng,
                                  allowed=settings.characters)
         self.effects = Effects(self.rng)
+        self.tasks = TaskManager()
+        self.hacker = HackerMode()
         self.conversation = Conversation(self)
         self.body = None            # created in attach(), once we know the screen
         self.bounds = None
@@ -104,7 +108,7 @@ class Companion:
     def on_idle(self, seconds):
         """The IdleMonitor reports how long the user has been away."""
         now = self.clock()
-        change = self.evil.on_idle(seconds, now)
+        change = self.evil.on_idle(seconds, now, may_turn_evil=not self.busy_working)
         if change == 'evil':
             log.info('no input for a while... turning EVIL')
             personality.on_turned_evil(self, now)
@@ -150,6 +154,7 @@ class Companion:
             personality.on_bubble_shown(self, shown, now)
 
         self._update_costume(now, dt)
+        self._update_tasks(now, dt)
         self.conversation.update(now)
         if self._pending_click is not None and now - self._pending_click > DOUBLE_CLICK_SECONDS:
             self._pending_click = None
@@ -174,7 +179,46 @@ class Companion:
         self.effects.update(now)
 
     def dress_up(self, character_id=None):
-        self.wardrobe.dress_up(self.clock(), character_id)
+        if not self.busy_working:              # no costumes over the hacker outfit
+            self.wardrobe.dress_up(self.clock(), character_id)
+
+    # ------------------------------------------------------------ tasks
+    @property
+    def busy_working(self):
+        """Has a task (or is still in his hacker outfit)."""
+        return self.tasks.busy or self.hacker.active
+
+    def start_task(self, kind=None):
+        """Give him a task. Returns 'started' or 'queued'."""
+        now = self.clock()
+        task = make_task(kind, self.rng)
+        result = self.tasks.submit(task, now)
+        log.info('task %s: %s (%s)', task.id, task.title, result)
+        personality.on_task_given(self, now)
+        return result
+
+    def abort_task(self, everything=False):
+        """Abandon the current task (or all of them). Returns the aborted tasks."""
+        now = self.clock()
+        return self.tasks.abort_all(now) if everything else self.tasks.abort(now)
+
+    def _update_tasks(self, now, dt):
+        # Talking to him or picking him up interrupts the work; it resumes afterwards.
+        self.tasks.set_paused('conversation', self.conversation.active, now)
+        self.tasks.set_paused('held', self.body.held, now)
+        for event, task in self.tasks.update(now):
+            log.info('task %s %s', task.id, event)
+            personality.on_task_event(self, event, task, now)
+        change = self.hacker.update(now, dt, has_work=self.tasks.busy,
+                                    can_sit=self.tasks.working and self.body.on_ground)
+        if change == 'dressed':
+            log.info('hacker mode on')
+            personality.on_hacker_dressed(self, now)
+        elif change == 'undressed':
+            log.info('hacker mode off')
+            personality.on_hacker_undressed(self, now)
+        if self.hacker.typing:
+            self.effects.emit('binary', now, dt, self.body.facing)
 
     def _sync_window(self):
         pos = (int(round(self.body.x - self.width / 2)), int(round(self.body.y)))
@@ -229,7 +273,8 @@ class Companion:
     def _single_click(self, now):
         if self.conversation.active:
             self.conversation.stop()                   # shh
-        elif self.wardrobe.current and not self.wardrobe.changing(now):
+        elif (self.wardrobe.current and not self.wardrobe.changing(now)
+              and not self.busy_working):
             personality.on_costume_clicked(self, now)
         elif self.bubbles.visible:
             self.bubbles.dismiss(now)
@@ -247,11 +292,17 @@ class Companion:
     def menu_items(self):
         now = self.clock
         items = [MenuItem('👋  Wave hello', lambda: self.face.show(WAVE, now(), 2.5))]
-        if self.body.state == 'sleep':
-            items.append(MenuItem('☀️  Wake up', lambda: self.body.wake(now())))
+        if self.busy_working:
+            items.append(MenuItem('🛑  Abort task', self.abort_task))
         else:
-            items.append(MenuItem('😴  Take a nap', lambda: self.body.sleep(now(), 60)))
-        if self.wardrobe.current:
+            items.append(MenuItem('💻  Do a task', self.start_task))
+            if self.body.state == 'sleep':
+                items.append(MenuItem('☀️  Wake up', lambda: self.body.wake(now())))
+            else:
+                items.append(MenuItem('😴  Take a nap', lambda: self.body.sleep(now(), 60)))
+        if self.busy_working:
+            pass                                  # no costumes while hacking
+        elif self.wardrobe.current:
             items.append(MenuItem('👕  Back to normal',
                                   lambda: personality.on_costume_clicked(self, now())))
         else:

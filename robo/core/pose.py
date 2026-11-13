@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from . import face as F
 from .body import SLEEP, WALK
+from .hacker import OUTFIT as HACKER
 
 
 @dataclass
@@ -39,6 +40,7 @@ class Pose:
     poof: Optional[float] = None  # costume-change smoke, 0..1 while it plays
     particles: list = field(default_factory=list)       # robo.core.effects.Particle
     talk: float = 0.0            # mouth opening while speaking (0..1)
+    sit: float = 0.0             # 0 standing .. 1 sitting at his laptop (hacker mode)
 
 
 def _mood(robot, now, looks_evil):
@@ -56,7 +58,11 @@ def _mood(robot, now, looks_evil):
         return 'focus'
     if robot.wardrobe.doing_move(now):
         return robot.wardrobe.current.move_mood
-    if face.active(F.HAPPY, now) or robot.bubbles.open:
+    if face.active(F.HAPPY, now):
+        return 'happy'
+    if robot.hacker.typing:
+        return 'focus'
+    if robot.bubbles.open:
         return 'happy'
     return 'normal'
 
@@ -69,6 +75,8 @@ def _arms(robot, now, looks_evil):
         return 'swing' if body.state == WALK else 'scheme'
     if robot.wardrobe.doing_move(now):
         return robot.wardrobe.current.move
+    if robot.hacker.typing:
+        return 'type'
     if face.active(F.ARMS_UP, now) or face.active(F.HAPPY, now):
         return 'up'
     if face.active(F.WAVE, now):
@@ -101,6 +109,8 @@ def _tilt(robot, now, sleeping):
     w = robot.wardrobe
     if w.doing_move(now) and w.current.move_lift == 'fly':
         return 0.22                        # leaning into the flight (head forward)
+    if robot.hacker.typing:
+        return 0.05 + math.sin(now * 4) * 0.03   # nodding along to the code
     return 0.0
 
 
@@ -117,13 +127,17 @@ def build_pose(robot, now):
         antenna, glow = 'alert', 0.5 + 0.5 * math.sin(t * 9)
     elif looks_evil:
         antenna, glow = 'evil', 0.6 + 0.4 * math.sin(t * 5)
+    elif robot.hacker.dressed:
+        antenna, glow = 'hack', 0.8 if int(t * 7) % 3 else 0.1   # busy disk light
     elif body.state == SLEEP:
         antenna, glow = 'sleep', 0.0
     else:
         antenna, glow = 'normal', 0.25 + 0.2 * math.sin(t * 2)
 
     character = robot.wardrobe.current
-    lift = body.hop_lift(now) + _move_lift(robot, now, t)
+    hacker = robot.hacker
+    sit = hacker.sit
+    lift = body.hop_lift(now) * (1 - sit) + _move_lift(robot, now, t)
     if character and character.gallop and body.state == WALK:
         lift += abs(math.sin(body.phase * 0.6)) * 7        # giddy-up / moon bounce
 
@@ -140,8 +154,13 @@ def build_pose(robot, now):
         zzz=sleeping,
         jitter=robot.rng.uniform(-3, 3) if glitching else 0.0,
         hearts=face.heart_ages(now),
-        costume=character.id if character else '',
-        poof=robot.wardrobe.poof(now),
+        costume=HACKER if hacker.dressed else (character.id if character else ''),
+        poof=_first(robot.wardrobe.poof(now), hacker.poof(now)),
         particles=robot.effects.particles,
         talk=robot.conversation.mouth(now),
+        sit=sit,
     )
+
+
+def _first(*values):
+    return next((v for v in values if v is not None), None)

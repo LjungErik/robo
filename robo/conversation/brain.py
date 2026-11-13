@@ -5,7 +5,9 @@ from datetime import datetime
 from typing import Callable, Optional, Tuple
 
 # Things a Reply can ask the robot to do (see robo.core.personality.on_reply).
-ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'laugh')
+ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'laugh',
+           'start_task',   # action_arg: task kind (robo.tasks.TASK_KINDS), None = default
+           'abort_task')   # action_arg: 'all' to abandon every task, else just the current one
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,9 @@ class Context:
     evil: bool = False
     characters: Tuple[str, ...] = ()              # characters he may become
     turn: int = 0                                 # how many things the user said so far
+    task: Optional[str] = None                    # title of the task he's working on
+    task_progress: Optional[float] = None         # 0..1 if known
+    tasks_waiting: int = 0                        # tasks queued up after the current one
 
 
 class Brain(ABC):

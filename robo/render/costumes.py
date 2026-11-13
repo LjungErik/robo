@@ -9,12 +9,16 @@ the right moment (all drawn in the robot's coordinates, +x = the way he faces):
     face(cr, p)          on the face screen          glasses, beards
     head(cr, p)          on top of the head          hats, helmets
     front(cr, p)         in front of everything      toys
+    ground(cr, p)        on the floor in front of him, not bobbing or sinking with
+                         his body (the hacker's laptop)
     front_hand(cr, angle, p) / back_hand(...)       props, drawn at the hand
                          (cr is in arm coordinates; cr.rotate(-angle) = upright)
     antenna_y            where the antenna sticks out (top of the hat)
 
 To add a costume: write its layers, add an Outfit to OUTFITS, and add a
 Character with the same id to robo.core.characters.
+WORK_OUTFITS are worn for a reason (hacker = he's doing a task for you) and
+are never picked as a random dress-up character.
 """
 import math
 from dataclasses import dataclass
@@ -61,6 +65,7 @@ class Outfit:
     front_hand: Optional[Callable] = None
     back_hand: Optional[Callable] = None
     front: Optional[Callable] = None
+    ground: Optional[Callable] = None
     antenna_y: float = HEAD_TOP
 
 
@@ -835,6 +840,141 @@ def kitty_front(cr, p):
     cr.move_to(cx - 6, cy + 3)
     cr.curve_to(cx - 14, cy + 9, cx - 20, cy + 6, cx - 26, cy + 9 + hop)
     paint(cr, None, YARN, 1.6)
+
+
+# ================================================================ 80s hacker (task mode)
+PUTTY = hexc('#E3D9BF')                   # beige 80s plastic
+PUTTY_DARK = hexc('#C2B696')
+JACKET = hexc('#34384C')
+FOAM = hexc('#FF8A3D')                    # walkman headphone foam
+PHOSPHOR = hexc('#39FF7A')
+RAINBOW = (hexc('#E5484D'), hexc('#FFA94D'), hexc('#FFD23F'), hexc('#43D17A'), hexc('#4DA8FF'))
+
+
+def hacker_head(cr, p):
+    def band():
+        cr.new_path()
+        cr.move_to(-40, -86)
+        cr.curve_to(-42, -122, 42, -122, 40, -86)
+    outlined_stroke(cr, band, STEEL, 2.6, 5)
+    for side in (-1, 1):                  # orange foam ear pads
+        circle(cr, side * 41, -84, 9.5)
+        paint(cr, FOAM)
+        circle(cr, side * 41, -84, 4)
+        paint(cr, hexc('#D96A22'), None)
+
+
+def hacker_face(cr, p):
+    lx = p.look
+    sit = p.sit
+    if sit > 0.01:                        # green glow of the screen on his face
+        cr.save()
+        rrect(cr, -28, -104, 56, 40, 13)
+        cr.clip()
+        g = cairo.LinearGradient(0, -64, 0, -104)
+        g.add_color_stop_rgba(0, PHOSPHOR[0], PHOSPHOR[1], PHOSPHOR[2], 0.28 * sit)
+        g.add_color_stop_rgba(1, PHOSPHOR[0], PHOSPHOR[1], PHOSPHOR[2], 0.0)
+        cr.set_source(g)
+        cr.paint()
+        cr.restore()
+    glare = PHOSPHOR if sit > 0.5 else WHITE
+    for ex in (-12, 12):                  # big square 80s frames
+        rrect(cr, ex + lx - 9.5, -94, 19, 15, 4)
+        paint(cr, (0.08, 0.1, 0.18, 0.4), INK, 2.4)
+        cr.move_to(ex + lx - 6, -83)
+        cr.line_to(ex + lx - 1, -91)
+        paint(cr, None, glare[:3] + (0.8,), 1.6)
+    cr.move_to(-2.5 + lx, -89)
+    cr.line_to(2.5 + lx, -89)
+    paint(cr, None, INK, 2.4)
+
+
+def hacker_body(cr, p):
+    rrect(cr, -22, -53, 44, 35, 11)       # dark jacket
+    paint(cr, JACKET)
+    cr.move_to(-9, -53)                   # white t-shirt in the V
+    cr.line_to(9, -53)
+    cr.line_to(0, -38)
+    cr.close_path()
+    paint(cr, WHITE, None)
+    for side in (-1, 1):                  # lapels
+        cr.move_to(side * 9, -53)
+        cr.line_to(0, -38)
+        cr.line_to(side * 4, -26)
+        paint(cr, None, hexc('#22253A'), 2)
+    circle(cr, 13, -44, 3)                # smiley pin
+    paint(cr, YELLOW_PIN, INK, 1.2)
+    circle(cr, -14, -32, 2.2)
+    paint(cr, PHOSPHOR, INK, 1.2)
+
+
+YELLOW_PIN = hexc('#FFD23F')
+
+
+def laptop_carried(cr, angle, p):
+    """Closed laptop tucked under his arm while he's interrupted."""
+    if p.sit > 0.5:
+        return
+    _upright(cr, angle)
+    rrect(cr, -10, -10, 8, 22, 2)
+    paint(cr, PUTTY, INK, 2)
+    cr.move_to(-6, -9)
+    cr.line_to(-6, 11)
+    paint(cr, None, PUTTY_DARK, 1.4)
+
+
+def hacker_ground(cr, p):
+    """The laptop, open, seen from behind its lid."""
+    if p.sit <= 0.5:
+        return
+    t = p.t
+    glow = cairo.LinearGradient(0, -37, 0, -66)   # screen light spilling over the lid
+    glow.add_color_stop_rgba(0, PHOSPHOR[0], PHOSPHOR[1], PHOSPHOR[2], 0.35)
+    glow.add_color_stop_rgba(1, PHOSPHOR[0], PHOSPHOR[1], PHOSPHOR[2], 0.0)
+    cr.move_to(-23, -37)
+    cr.line_to(23, -37)
+    cr.line_to(31, -66)
+    cr.line_to(-31, -66)
+    cr.close_path()
+    cr.set_source(glow)
+    cr.fill()
+
+    def lid():
+        rrect(cr, -25, -38, 50, 30, 4)
+    lid()
+    paint(cr, PUTTY, INK, 2.4)
+    cr.save()                             # rainbow stripes across the corner
+    lid()
+    cr.clip()
+    for i, col in enumerate(RAINBOW):
+        cr.move_to(-30 + i * 3.2, -8)
+        cr.line_to(-14 + i * 3.2, -38)
+        paint(cr, None, col, 3.2)
+    cr.restore()
+    lid()
+    paint(cr, None, INK, 2.4)
+    cr.save()                             # ">_" sticker (never mirrored)
+    cr.translate(6, -23)
+    cr.scale(p.facing, 1)
+    rrect(cr, -9, -6, 18, 12, 3)
+    paint(cr, hexc('#22253A'), INK, 1.4)
+    cr.select_font_face('Monospace', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+    cr.set_font_size(8)
+    cr.move_to(-6.5, 3)
+    cr.set_source_rgba(*PHOSPHOR)
+    cr.show_text('>_' if int(t * 2) % 2 else '>')
+    cr.restore()
+    rrect(cr, -32, -10, 64, 9, 3)         # keyboard deck
+    paint(cr, PUTTY_DARK, INK, 2.2)
+    if int(t * 8) % 3:                    # disk light
+        circle(cr, 26, -5.5, 1.6)
+        paint(cr, PHOSPHOR, None)
+
+
+WORK_OUTFITS = {
+    'hacker': Outfit(body=hacker_body, face=hacker_face, head=hacker_head,
+                     back_hand=laptop_carried, ground=hacker_ground, antenna_y=-115),
+}
 
 
 # ================================================================ registry
