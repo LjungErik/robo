@@ -257,6 +257,10 @@ class Platform(ABC):
         """Folder for task workspaces."""
         return os.path.join(os.path.expanduser('~'), '.robo', 'tasks')
 
+    def agent_dir(self) -> str:
+        """Empty folder of Robo's own that the AI agent CLI runs in."""
+        return os.path.join(os.path.expanduser('~'), '.robo', 'agent')
+
     # ------------------------------------------------------------ settings window
     # A platform with a settings window returns True and implements
     # open_settings(). The window should be generated from robo.config.FIELDS

@@ -137,8 +137,20 @@ class RuleBrain(Brain):
                                 "I'll be right here. Boop!",
                                 'Talk to you later, friend!'), 'happy', action='wave', end=True)
 
+    @staticmethod
+    def _clean(heard):
+        return ' '.join(heard.lower().replace('-', ' ').split())
+
+    def topic(self, heard):
+        """Which RULES topic would answer this ('fallback' if none)."""
+        text = self._clean(heard)
+        for topic, pattern, _handler in self.RULES:
+            if text and pattern.search(text):
+                return topic
+        return 'fallback'
+
     def respond(self, heard, ctx):
-        text = ' '.join(heard.lower().replace('-', ' ').split())
+        text = self._clean(heard)
         if not text:
             return self.fallback(text, ctx)
         for _topic, pattern, handler in self.RULES:      # the "switch statement"

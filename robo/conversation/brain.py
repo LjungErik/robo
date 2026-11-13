@@ -7,7 +7,8 @@ from typing import Callable, Optional, Tuple
 # Things a Reply can ask the robot to do (see robo.core.personality.on_reply).
 ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'laugh',
            'start_task',   # action_arg: task kind (robo.tasks.TASK_KINDS), None = default
-           'abort_task')   # action_arg: 'all' to abandon every task, else just the current one
+           'abort_task',   # action_arg: 'all' to abandon every task, else just the current one
+           'travel')       # action_arg: 'fly', 'hang' or 'teleport' ('' = whatever he can)
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,20 @@ class Brain(ABC):
 
         The default answers immediately. A slow brain (an LLM) should
         override this, work in the background and call on_reply(reply) on
-        the main thread when done; Robo shows a "thinking" bubble meanwhile.
+        the main thread when done (e.g. from update()); Robo shows a
+        "thinking" bubble meanwhile.
         """
         on_reply(self.respond(heard, ctx))
+
+    # optional hooks for slow (background) brains
+    def update(self, now) -> None:
+        """Called every frame on the main thread."""
+
+    def cancel(self) -> None:
+        """Forget the question being worked on (he was hushed)."""
+
+    def conversation_started(self, now) -> None:
+        pass
+
+    def conversation_ended(self, now) -> None:
+        pass

@@ -9,7 +9,9 @@ tinkering with himself; he glows while there are unapplied changes and
 cheers when you apply them. Characters are listed from their files.
 """
 import math
+import os
 import random
+import threading
 import time
 
 import gi
@@ -246,6 +248,8 @@ class SettingsWindow:
             control = self._character_chips(row)
         elif f.kind == 'look':
             control = self._look_chips(row)
+        elif f.kind == 'choice':
+            control = self._choice(f, row, top)
         else:
             raise ValueError(f'unknown setting kind {f.kind!r}')
 
@@ -295,6 +299,48 @@ class SettingsWindow:
             set_(v)
             value_label.set_text(f.fmt(get()))
         return _Control(row, get, set_and_label)
+
+    def _choice(self, f, row, top):
+        combo = Gtk.ComboBoxText(valign=Gtk.Align.CENTER)
+        for value, label in f.choices:
+            combo.append(value, label)
+        top.pack_end(combo, False, False, 0)
+        status = _style(Gtk.Label(xalign=0), 'robo-help')
+        status.set_line_wrap(True)
+        status.set_selectable(True)            # so you can copy the install / login command
+        row.pack_start(status, False, False, 0)
+
+        def changed(*_):
+            if f.key == 'agent':
+                self._show_agent_status(combo.get_active_id(), status)
+            self._changed()
+        combo.connect('changed', changed)
+
+        def get():
+            return combo.get_active_id() or f.choices[0][0]
+
+        def set_(value):
+            combo.set_active_id(value if any(v == value for v, _l in f.choices)
+                                else f.choices[0][0])
+        return _Control(row, get, set_)
+
+    def _show_agent_status(self, agent_id, label):
+        """Is that agent's CLI installed and logged in? (checked in the background)"""
+        from robo.agents import make_backend
+        backend = make_backend(agent_id, os.path.expanduser('~'))
+        if backend is None:
+            label.set_text('Robo answers with his own little rule book, fully offline.')
+            return
+        label.set_text(f'Checking {backend.name}…')
+
+        def check():
+            st = backend.status()
+            text = ('✓ ' if st.ready and st.logged_in else '✗ ' if not st.ready else '') + st.detail
+            if st.fix:
+                text += f'\n{st.fix}'
+            GLib.idle_add(lambda: label.get_text().startswith('Checking ' + backend.name)
+                          and label.set_text(text) and False)
+        threading.Thread(target=check, daemon=True).start()
 
     def _chip_flow(self):
         flow = Gtk.FlowBox()

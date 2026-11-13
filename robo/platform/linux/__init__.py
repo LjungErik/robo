@@ -87,6 +87,10 @@ class LinuxPlatform(Platform):
         from .paths import data_dir
         return os.path.join(data_dir(), 'tasks')
 
+    def agent_dir(self):
+        from .paths import data_dir
+        return os.path.join(data_dir(), 'agent')
+
     def config_dir(self):
         base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
         return os.path.join(base, 'robo')

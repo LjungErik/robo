@@ -8,6 +8,7 @@ platform can be generated from it.
 from dataclasses import asdict, dataclass, field, fields as dc_fields, replace
 from typing import Callable, Optional, Tuple
 
+from robo.agents import BACKENDS, OFF
 from robo.core import characters
 
 # Characters that existed before settings files recorded "known_characters".
@@ -40,6 +41,8 @@ class Settings:
     voice_volume: float = 0.8           # 0..1
     robot_effect: bool = False          # use the beepy robot voice even when nice
     wake_word: bool = False             # keep listening for "Hey Robo"
+    agent: str = OFF                    # AI brain: 'off', 'claude', 'codex' or 'gemini'
+    agent_model: str = ''               # model for the agent CLI ('' = its own default)
     verbose: bool = False               # log events
     demo: bool = False                  # show every icon once at start-up (not saved)
 
@@ -72,6 +75,8 @@ class Settings:
         else:
             wanted = set(chars)
             put('characters', tuple(c for c in known if c in wanted))
+        put('agent', self.agent if self.agent in BACKENDS else OFF)
+        put('agent_model', str(self.agent_model or '').strip())
         look = str(self.look or characters.DEFAULT_LOOK)
         put('look', look if look in characters.look_ids() else characters.DEFAULT_LOOK)
 
@@ -112,7 +117,7 @@ class Settings:
                     seen = data.get('known_characters', LEGACY_KNOWN_CHARACTERS)
                     new = [c for c in all_characters() if c not in set(seen)]
                     changes[key] = tuple(chosen) + tuple(new)
-            elif key == 'look':
+            elif key in ('look', 'agent', 'agent_model'):
                 changes[key] = str(value)
             elif isinstance(getattr(base, key), bool):
                 changes[key] = bool(value)
@@ -146,13 +151,15 @@ class Field:
     label: str
     section: str
     kind: str                         # 'float', 'seconds' (pick from options), 'bool',
-                                      # 'characters' (pick several), 'look' (pick one)
+                                      # 'characters' (pick several), 'look' (pick one),
+                                      # 'choice' (one of `choices`)
     help: str = ''
     min: float = 0.0
     max: float = 1.0
     step: float = 0.1
     options: Tuple[float, ...] = ()
     depends: Optional[str] = None     # only editable while this bool setting is on
+    choices: Tuple[Tuple[str, str], ...] = ()   # 'choice': (value, label) pairs
     fmt: Callable[[float], str] = field(default=lambda v: f'{v:g}', compare=False)
 
 
@@ -163,6 +170,7 @@ SECTIONS = (
     ('evil', 'Evil mode', '😈'),
     ('dress', 'Dressing up', '🎭'),
     ('voice', 'Voice & talking', '🗣️'),
+    ('brain', 'AI brain', '🧠'),
     ('advanced', 'Advanced', '🔧'),
 )
 
@@ -206,6 +214,13 @@ FIELDS = (
     Field('wake_word', 'Listen for "Hey Robo"', 'voice', 'bool',
           'Keeps the microphone open so you can just say "Hey Robo". '
           'Everything is understood offline, on this computer.'),
+    Field('agent', 'Talk through', 'brain', 'choice',
+          'Answers your questions with an AI agent, using the login of its own app '
+          '(Claude Code, Codex or Gemini CLI): no API key needed, a Claude Pro account '
+          'works. What you say to him is sent to that service. Commands like "dress up" '
+          'or "do a task" still work offline.',
+          choices=(('off', 'Off (just Robo)'), ('claude', 'Claude (Claude Code)'),
+                   ('codex', 'ChatGPT (Codex CLI)'), ('gemini', 'Gemini (Gemini CLI)'))),
     Field('verbose', 'Log what he sees', 'advanced', 'bool',
           'Prints notifications and decisions to the terminal.'),
 )

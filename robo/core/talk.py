@@ -123,6 +123,7 @@ class Conversation:
         now = self.robot.clock()
         log.info('conversation started')
         self.turn = 0
+        self.brain.conversation_started(now)
         personality.on_conversation_started(self.robot, now)
         if not self.can_hear:
             if self.ears is not None and self.ears.unavailable_reason:
@@ -138,6 +139,8 @@ class Conversation:
             return
         log.info('conversation stopped')
         self.reply = Reply('', end=True)
+        if self.state == THINKING:
+            self.brain.cancel()
         if self.ears:
             self.ears.pause()
         self.voice.stop()             # may already finish via _spoken
@@ -212,6 +215,7 @@ class Conversation:
         self.state = IDLE
         self.utterance = None
         self.robot.bubbles.discard(TALK_ICONS, now)
+        self.brain.conversation_ended(now)
         personality.on_conversation_ended(self.robot, reply, now)
         if self.ears and self.ears.available:
             self.ears.set_wake_word(self._wake_word, self.on_wake_word)
@@ -219,6 +223,8 @@ class Conversation:
     # ------------------------------------------------------------ per frame
     def update(self, now):
         self.voice.update(now)
+        if self.brain is not None:
+            self.brain.update(now)
         if (self.state == THINKING and self._thinking_since is not None
                 and now - self._thinking_since > THINK_BUBBLE_DELAY
                 and not (self.robot.bubbles.current

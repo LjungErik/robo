@@ -8,6 +8,8 @@ complete example of a back end, handy as a template for a new port.
     p.scheduler.advance(5)                    # simulate 5 seconds
     p.window.save_png('frame.png')
 """
+import os
+
 import cairo
 
 from robo.core.geometry import Rect
@@ -302,6 +304,9 @@ class HeadlessPlatform(Platform):
 
     def approver(self):
         return self.fake_approver
+
+    def agent_dir(self):
+        return os.path.join(self.task_dir(), 'agent')
 
     def task_dir(self):
         if self.tmp_task_dir is None:

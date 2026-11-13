@@ -32,7 +32,7 @@ and logging.
 Settings are saved in `~/.config/robo/settings.json`. You can also edit that
 file by hand: he notices within a couple of seconds and applies it.
 
-Command-line flags (`--scale`, `--look`, `--evil-after`, `--dress-up-every`,
+Command-line flags (`--scale`, `--look`, `--agent`, `--evil-after`, `--dress-up-every`,
 `--no-updates`, `-v`) still work. They override the saved file for that run only. Pressing Apply
 saves whatever is in the window, including values that came from flags.
 
@@ -135,7 +135,7 @@ Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
 - Pitch, speed and volume are in **Settings → Voice & talking**. Switch on
   **Robotic voice** if you want the beepy voice all the time.
 - Speech recognition is **offline** ([Vosk](https://alphacephei.com/vosk/)): nothing you
-  say leaves your computer. `install.sh` sets everything up in `~/.local/share/robo`:
+  say leaves your computer, unless you give him an AI brain (below). `install.sh` sets everything up in `~/.local/share/robo`:
   its own Python environment, a ~70 MB English recognition model and the ~60 MB voice.
 - His nice voice is [Piper](https://github.com/OHF-Voice/piper1-gpl) (offline neural
   speech, voice `en_US-hfc_female-medium`, lifted a little in pitch). The evil and robotic
@@ -143,11 +143,48 @@ Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
 - If he can't hear you, check that your microphone isn't muted in Settings → Sound.
 
 How it works: `robo/core/talk.py` runs the conversation: listen, think, speak,
-listen again. `robo/conversation/rules.py` is his brain for now, a simple
+listen again. `robo/conversation/rules.py` is his own little brain, a simple
 "switch statement" of topics where the first match answers. To teach him a new
-answer, add a row to `RULES`. To swap in an LLM later, write a
-`robo.conversation.Brain` subclass whose `ask()` answers in the background, and
-pass it in `robo/app.py` where `RuleBrain()` is used today.
+answer, add a row to `RULES`.
+
+## AI brain 🧠
+
+Give him an AI agent and he can answer anything you ask, remember what you said
+earlier in the chat, and still dress up, dance or fly when the AI thinks it fits.
+Pick one in **Settings → AI brain → Talk through** (or `--agent claude` for one run):
+
+| Choice | Uses | Log in once with |
+|---|---|---|
+| Claude | [Claude Code](https://claude.com/claude-code) (`claude -p`) | `claude`, then `/login` with your Claude Pro / Max account |
+| ChatGPT | OpenAI [Codex CLI](https://github.com/openai/codex) (`codex exec`) | `codex login` with your ChatGPT account |
+| Gemini | Google [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini -p`) | `gemini`, then "Login with Google" |
+
+- **No API keys.** Robo runs the provider's own app, which keeps its own login, so a
+  Claude Pro subscription works exactly as it does in Claude Code. Robo never sees a
+  password, key or token, and API-key environment variables are not passed on (so it is
+  your subscription that answers, not a pay-per-use key). The settings window shows
+  whether the chosen app is installed and logged in, and what to run if it isn't.
+- **Talk only, for now.** The agent runs with no tools in an empty folder of Robo's own
+  (`~/.local/share/robo/agent`): it can't read your files, run commands or browse.
+- **What stays local:** tasks, goodbye, and short commands ("dress up as a pirate",
+  "fly around", "what time is it") are answered by his own brain, instantly and offline.
+  Longer requests ("dress up as a pirate and tell me a pirate fact") go to the agent.
+- **Privacy:** what you say to him (after speech recognition) is sent to the provider you
+  picked, along with a short status line (time, battery, his costume).
+- Answers take a few seconds (he shows the ⚙️ thinking bubble). Click him to hush him;
+  that also cancels the question. After 30 minutes without talking he starts a fresh
+  conversation. `agent_model` in `settings.json` picks a model (default: the app's own).
+- Claude is tested; the ChatGPT and Gemini connections follow their CLIs' documentation
+  but haven't been tried against real installations yet.
+- Using your own subscription through your own Claude Code is normal personal use. If you
+  ever distribute Robo as a product, check Anthropic's (and OpenAI's / Google's) terms
+  about third-party apps using consumer subscription logins.
+
+How it works: `robo/agents/` has one small class per provider (`claude.py`, `codex.py`,
+`gemini.py`) that runs its CLI and reads the answer; `robo/conversation/agent.py`
+(`AgentBrain`) decides what goes to the agent, runs it on a worker thread, and turns its
+JSON answer into a `Reply`. To add a provider, subclass `AgentBackend` and add it to
+`BACKENDS` in `robo/agents/__init__.py`.
 
 ## Tasks 💻
 
@@ -259,7 +296,10 @@ robo/
   config.py               Settings + FIELDS (describes every setting for the settings window)
   settings_store.py       settings.json load / save / change detection
   audio.py                voice effects (robot filter, chirps, mouth envelope)
-  conversation/           his brain: Brain interface + RuleBrain (keyword switch)
+  conversation/           his brain: Brain interface + RuleBrain (keyword switch) +
+                          AgentBrain (an AI agent for everything else)
+  agents/                 AI agents through their own logged-in CLIs: Claude Code, Codex,
+                          Gemini CLI (no API keys)
   tasks/                  work you give him: Task lifecycle, TaskManager (queue, pauses), catalog,
                           SandboxedTask
   sandbox/                portable sandbox parts: Permissions, Workspace + change review,
@@ -300,6 +340,7 @@ robo/
     headless.py           off-screen fake platform used by the tests
 tests/test_robot.py       python3 -m unittest discover -s tests
 tests/test_characters.py  character files, user characters, flying / hanging / teleporting
+tests/test_agent.py       the AI brain, with fake Claude / Codex / Gemini CLIs
 tests/test_sandbox.py     sandbox rules, checked inside a real sandbox
 ```
 

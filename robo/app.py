@@ -10,7 +10,7 @@ import os
 import sys
 
 from robo.config import Settings
-from robo.conversation import RuleBrain
+from robo.conversation import AgentBrain, RuleBrain
 from robo.core.companion import Companion
 from robo.design import REGISTRY
 from robo.platform import load_platform
@@ -42,6 +42,8 @@ def parse_args(argv=None):
                     help='about how often he dresses up as a character (0 = never)')
     ap.add_argument('--look', metavar='ID',
                     help='what he looks like (robo, ironman, spiderman, thanos, ...)')
+    ap.add_argument('--agent', choices=('off', 'claude', 'codex', 'gemini'),
+                    help='AI brain to talk through (uses that CLI\'s own login, no API key)')
     ap.add_argument('--check', nargs='*', metavar='FILE',
                     help='check character files (all of them if none given) and exit')
     ap.add_argument('--platform', default=None, help=argparse.SUPPRESS)   # e.g. 'headless'
@@ -51,6 +53,8 @@ def parse_args(argv=None):
         overrides['check'] = a.check
     if a.look:
         overrides['look'] = a.look
+    if a.agent:
+        overrides['agent'] = a.agent
     if a.scale is not None:
         overrides['scale'] = a.scale
     if a.verbose:
@@ -94,9 +98,12 @@ class RoboApp:
                                               workspace_root=platform.task_dir())
         Workspace.prune(platform.task_dir())
 
-        # Conversation: swap RuleBrain for an LLM-backed Brain here later.
+        # Conversation: RuleBrain for commands, plus an AI agent if one is chosen
+        # in settings (Claude / ChatGPT / Gemini through their own logged-in CLI).
+        self.brain = AgentBrain(RuleBrain(), workdir=platform.agent_dir())
+        self.brain.configure(settings)
         self.robot.conversation.battery = platform.battery_percent
-        self.robot.conversation.attach(RuleBrain(), voice=platform.speech_output(),
+        self.robot.conversation.attach(self.brain, voice=platform.speech_output(),
                                        ears=platform.speech_input())
 
         idle = platform.idle_monitor()     # always on, so evil mode can be switched on live
@@ -128,6 +135,7 @@ class RoboApp:
         self.settings = settings
         _set_log_level(settings)
         self.robot.apply_settings(settings)
+        self.brain.configure(settings)
         for source in self.sources:
             source.apply_settings(settings)
         log.info('settings applied: %s', settings.to_dict())
