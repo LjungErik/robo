@@ -137,6 +137,7 @@ class Conversation:
                        memory_text=r.memory.describe(), memory_summary=r.memory.summary(),
                        remembers=r.memory.enabled, personality=_describe(r.personality()),
                        usage_text=LEDGER.spoken(),
+                       seeing=r.seeing.kind if r.seeing else '', can_see=r.can_see_screen(),
                        outfit_choice=pick.id if pick else None,
                        outfit_because=pick.because if pick else '',
                        favourite_outfits=tuple(r.taste.favourites(
@@ -245,7 +246,11 @@ class Conversation:
         self.state = THINKING
         self._thinking_since = self.robot.clock()
         self.robot.bubbles.discard({MIC}, self._thinking_since)
-        self.brain.ask(text, self.context(), self._answer)
+        ctx = self.context()
+        if self.robot.seeing:                     # you're showing him: a fresh look, right now
+            from dataclasses import replace
+            ctx = replace(ctx, screen=self.robot.look_at_screen())
+        self.brain.ask(text, ctx, self._answer)
 
     def _answer(self, reply):
         if self.state == THINKING:

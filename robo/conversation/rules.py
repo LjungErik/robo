@@ -88,6 +88,12 @@ class RuleBrain(Brain):
                                    'how is your task', 'how is it going with the task',
                                    'are you done', 'are you finished', 'progress'),
              self.task_status),
+            ('stop_seeing', _words('stop looking', 'stop sharing', "don't look",
+                                   'stop watching', 'close your eyes', "that's all I wanted to show"),
+             self.stop_seeing),
+            ('see_screen', _words('look at my screen', 'look at this', 'can you see my screen',
+                                  'can you see this', 'see my screen', 'look at my window',
+                                  'what am i looking at', 'help me with this'), self.see_screen),
             ('usage', _words('tokens', 'token', 'usage', 'how much have you used',
                              'how much did you use', 'how much is left', 'limit', 'quota',
                              'how much claude'), self.usage),
@@ -342,6 +348,19 @@ class RuleBrain(Brain):
 
     def joke(self, text, ctx):
         return Reply(self._pick(*JOKES) + ' Ha ha, beep!', 'happy', action='hearts')
+
+    def see_screen(self, text, ctx):
+        if ctx.seeing:
+            return Reply("I'm looking! Tell me what you need help with.", 'focus')
+        if ctx.can_see:
+            return Reply('I can only look when you show me. Right-click me and pick: show Robo '
+                         'my screen. You choose what I see!', 'happy')
+        return Reply("I can't see your screen, sorry. I need my Claude brain for that.", 'sad')
+
+    def stop_seeing(self, text, ctx):
+        if not ctx.seeing:
+            return Reply("Don't worry, I'm not looking at anything!", 'happy')
+        return Reply("Okay, I've stopped looking.", 'happy', action='stop_seeing')
 
     def usage(self, text, ctx):
         return Reply(ctx.usage_text or "I don't keep track of that here. Beep?", 'focus')

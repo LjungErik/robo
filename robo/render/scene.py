@@ -31,6 +31,8 @@ def draw_frame(cr, scale, pose, bubble, now, offset=0.0):
     draw_hearts(cr, pose.hearts)
     draw_particles(cr, pose.particles, now)
     draw_poof(cr, pose.poof)
+    if pose.seeing:
+        draw_seeing_badge(cr, pose)
     cr.restore()
 
     if bubble is not None:
@@ -88,3 +90,25 @@ def _count_badge(cr, x, y, count):
     cr.move_to(x - ext.width / 2 - ext.x_bearing, y - ext.height / 2 - ext.y_bearing)
     cr.set_source_rgba(*WHITE)
     cr.show_text(label)
+
+
+def draw_seeing_badge(cr, pose):
+    """You're showing him your screen: a pulsing red eye beside his head, so you can
+    tell at a glance that he's looking (the red border around the screen says what)."""
+    pulse = 0.5 + 0.5 * math.sin(pose.t * 3.2)
+    x, y = 40, -118 - pose.lift
+    cr.save()
+    cr.set_source_rgba(0.93, 0.16, 0.22, 0.22 * pulse)          # soft halo
+    circle(cr, x, y, 17 + 5 * pulse)
+    cr.fill()
+    circle(cr, x, y, 13)
+    paint(cr, RED, INK, 2.2)
+    cr.new_path()                                               # an eye: almond + pupil
+    cr.move_to(x - 8, y)
+    cr.curve_to(x - 4, y - 6, x + 4, y - 6, x + 8, y)
+    cr.curve_to(x + 4, y + 6, x - 4, y + 6, x - 8, y)
+    cr.close_path()
+    paint(cr, WHITE, None)
+    circle(cr, x, y, 2.6 + 0.6 * pulse)
+    paint(cr, INK, None)
+    cr.restore()

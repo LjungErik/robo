@@ -383,7 +383,8 @@ def icon_task_done(cr, t):
 
 
 BUTTER = hexc('#FFD54F')
-ANTENNA_STATES = {'evil': hexc('#FF3B4E'), 'sleep': GREY, 'hack': hexc('#39FF7A')}
+ANTENNA_STATES = {'evil': hexc('#FF3B4E'), 'sleep': GREY, 'hack': hexc('#39FF7A'),
+                  'seeing': hexc('#EE2938')}       # you're showing him your screen
 
 # name -> (draw function, accent colour used for the robot's antenna)
 ICONS = {

@@ -18,6 +18,7 @@ class ClaudeCode(AgentBackend):
     login_hint = 'Open a terminal, run "claude" and log in with your Claude account.'
     remembers = True
     supports_tasks = True
+    supports_images = True
     MODELS = (('', "Claude Code's default"),
               ('haiku', 'Haiku: quickest, uses the least'),
               ('sonnet', 'Sonnet: smart and light'),
@@ -48,6 +49,22 @@ class ClaudeCode(AgentBackend):
         if self.session:
             argv += ['--resume', self.session]   # remembers the conversation
         return argv
+
+    def command_with_image(self, prompt, system, png):
+        """The same question, with a picture: one user message on stdin (stream-json),
+        still with every tool switched off."""
+        import base64
+        import json
+        argv = self.command('', system)
+        argv.remove('')                         # no prompt argument: it comes on stdin
+        i = argv.index('--output-format')
+        argv[i + 1] = 'stream-json'
+        argv[i + 2:i + 2] = ['--verbose', '--input-format', 'stream-json']
+        message = {'type': 'user', 'message': {'role': 'user', 'content': [
+            {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png',
+                                         'data': base64.b64encode(png).decode('ascii')}},
+            {'type': 'text', 'text': prompt}]}}
+        return argv, (json.dumps(message) + '\n').encode('utf-8')
 
     def task_command(self, prompt, system, mcp_config, max_turns):
         argv = [self.program, '-p', prompt, '--output-format', 'stream-json', '--verbose',
@@ -89,7 +106,7 @@ class ClaudeCode(AgentBackend):
         return None
 
     def parse(self, stdout, stderr, returncode):
-        data = load_json(stdout)
+        data = _result_line(stdout) or load_json(stdout)
         if not isinstance(data, dict):
             detail = (stderr or stdout).strip().splitlines()[-1:] or ['no output']
             if 'login' in (stderr + stdout).lower() or 'auth' in (stderr + stdout).lower():
@@ -114,3 +131,12 @@ class ClaudeCode(AgentBackend):
             error.usage = usage
             raise error
         return AgentAnswer(text, data.get('session_id'), usage)
+
+
+def _result_line(stdout):
+    """stream-json output: the final {"type": "result"} line (None for plain json)."""
+    for line in reversed(stdout.strip().splitlines()):
+        data = load_json(line)
+        if isinstance(data, dict) and data.get('type') == 'result':
+            return data
+    return None

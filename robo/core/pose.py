@@ -53,6 +53,7 @@ class Pose:
     particles: list = field(default_factory=list)       # robo.core.effects.Particle
     talk: float = 0.0            # mouth opening while speaking (0..1)
     sit: float = 0.0             # 0 standing .. 1 sitting at his laptop (hacker mode)
+    seeing: bool = False         # you're showing him your screen: red light + eye badge
 
 
 def _mood(robot, now, looks_evil):
@@ -181,7 +182,9 @@ def build_pose(robot, now):
     sleeping = body.state == SLEEP and not looks_evil
     mood = _mood(robot, now, looks_evil)
 
-    if bubbles.open:
+    if robot.seeing:                      # always wins: you must be able to tell he's looking
+        antenna, glow = 'seeing', 0.55 + 0.45 * math.sin(t * 3.2)
+    elif bubbles.open:
         antenna, glow = 'alert', 0.5 + 0.5 * math.sin(t * 9)
     elif looks_evil:
         antenna, glow = 'evil', 0.6 + 0.4 * math.sin(t * 5)
@@ -229,6 +232,7 @@ def build_pose(robot, now):
         particles=robot.effects.particles,
         talk=robot.conversation.mouth(now),
         sit=sit,
+        seeing=bool(robot.seeing),
     )
 
 

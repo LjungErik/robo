@@ -38,6 +38,7 @@ log = logging.getLogger(__name__)
 DRAG_THRESHOLD = 6          # px of movement before a press becomes a drag
 DOUBLE_CLICK_SECONDS = 0.35 # a second click within this starts a conversation
 SCREEN_CHECK_SECONDS = 5    # how often to re-read the work area / re-raise
+SHARE_IDLE_SECONDS = 10 * 60  # you showed him your screen but asked nothing for this long: stop
 
 
 class Companion:
@@ -59,6 +60,10 @@ class Companion:
         self.on_new_outfit = None               # app: (id) -> None, he designed a new outfit
         self._wear_next = None                  # outfits.Choice to put on once he's free
         self.wall_clock = time.time
+        self.share = None                       # platform ScreenShare (the app sets it)
+        self.seeing = None                      # ShareInfo while you're showing him your screen
+        self._share_asking = False              # the system picker is open
+        self._seen_at = 0.0                     # last time he looked (for SHARE_IDLE_SECONDS)
         self.effects = Effects(self.rng)
         self.travel = Traveller(self.rng)
         self.look = settings.look             # his everyday look (base design or character)
@@ -209,6 +214,7 @@ class Companion:
         self._update_costume(now, dt)
         self._update_travel(now, dt)
         self._update_tasks(now, dt)
+        self._update_seeing(now)
         self.conversation.update(now)
         if self._pending_click is not None and now - self._pending_click > DOUBLE_CLICK_SECONDS:
             self._pending_click = None
@@ -337,6 +343,60 @@ class Companion:
         return outfits.choose(self.outfit_candidates(), outfits.situations(self, now),
                               self.taste, self.rng, exclude=(self.look, current),
                               avoid=(self.wardrobe.last_id,))
+
+    # ------------------------------------------------------------ seeing your screen
+    def can_see_screen(self):
+        """Could you show him your screen? (a way to share + an AI brain that sees)"""
+        backend = getattr(self.conversation.brain, 'backend', None)
+        return bool(self.share is not None and backend is not None and backend.supports_images
+                    and self.share.problem() is None)
+
+    def show_screen(self):
+        """Menu: you want to show him something. The system asks you what to share;
+        he sees nothing until you've picked, and only for as long as the red border shows."""
+        if self.seeing or self._share_asking:
+            return
+        if not self.can_see_screen():
+            why = self.share.problem() if self.share is not None else None
+            self.conversation.announce(
+                f"I can't look at your screen here{': ' + why if why else ''}."
+                if self.share is not None and why else
+                'I need my Claude brain to look at your screen. Check my settings!', 'sad')
+            return
+        self._share_asking = True
+        self.conversation.stop()
+        self.share.start(self._share_started, self._share_ended)
+
+    def stop_showing(self):
+        if self.share is not None and (self.seeing or self._share_asking):
+            self.share.stop()
+
+    def look_at_screen(self):
+        """A fresh picture of what you're showing him (None unless you are)."""
+        if not self.seeing or self.share is None:
+            return None
+        self._seen_at = self.clock()
+        return self.share.grab()
+
+    def _share_started(self, info):
+        self._share_asking = False
+        self.seeing = info
+        self._seen_at = self.clock()
+        log.info('you are showing Robo your %s', info.kind)
+        personality.on_seeing(self, self.clock())
+
+    def _share_ended(self, reason):
+        was = self.seeing
+        self._share_asking = False
+        self.seeing = None
+        log.info('not seeing your screen any more (%s)', reason)
+        personality.on_not_seeing(self, self.clock(), was is not None)
+
+    def _update_seeing(self, now):
+        if self.seeing and now - self._seen_at > SHARE_IDLE_SECONDS \
+                and not self.conversation.active:
+            log.info('nobody asked about the screen for a while: stop looking')
+            self.stop_showing()
 
     # ------------------------------------------------------------ designing outfits
     def can_design(self):
@@ -469,7 +529,8 @@ class Companion:
         self.task_env.approver.review_changes(task.title, changes.describe(), answered)
 
     def shutdown(self):
-        """The app is closing: stop every task (kills their sandboxes)."""
+        """The app is closing: stop showing him the screen, stop every task."""
+        self.stop_showing()
         self.tasks.abort_all(self.clock())
 
     def abort_task(self, everything=False):
@@ -591,6 +652,11 @@ class Companion:
     def menu_items(self):
         now = self.clock
         items = []
+        if self.seeing or self._share_asking:     # first, so it's easy to find
+            items += [MenuItem('⏹  Stop showing my screen', self.stop_showing),
+                      MenuItem.separator()]
+        elif self.can_see_screen():
+            items.append(MenuItem('👁  Show Robo my screen…', self.show_screen))
         if self.busy_working:
             items.append(MenuItem('🛑  Abort task', self.abort_task))
         else:

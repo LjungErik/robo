@@ -43,6 +43,45 @@ class MenuItem:
         return cls(None)
 
 
+@dataclass(frozen=True)
+class ShareInfo:
+    """What you chose to show him."""
+    kind: str = 'monitor'                    # 'monitor' (a whole screen) or 'window'
+    rect: Optional[Rect] = None              # where it is on the desktop, if known
+
+
+class ScreenShare:
+    """You show Robo your screen, on purpose, and you can see that you are.
+
+    The rules every platform must keep:
+      * Only start() begins a share, and start() must let YOU pick what to show
+        (the system's own picker). Robo can't pick, and nothing starts by itself.
+      * While a share is on, an unmistakable indicator is on screen (a pulsing red
+        border around what's shared, and a way to stop). No indicator, no frames:
+        grab() returns None unless the indicator is showing.
+      * stop() ends it everywhere, at once. So does the system's own stop button.
+    """
+    def problem(self) -> Optional[str]:
+        """Why sharing isn't possible here, or None."""
+        return 'not supported here'
+
+    def start(self, on_started: Callable[[ShareInfo], None],
+              on_ended: Callable[[str], None]) -> None:
+        """Ask you what to share. on_ended(reason) also fires if you cancel the picker."""
+        on_ended('not supported here')
+
+    @property
+    def active(self) -> bool:
+        return False
+
+    def grab(self) -> Optional[bytes]:
+        """The latest picture of what you're sharing (PNG), or None."""
+        return None
+
+    def stop(self) -> None:
+        pass
+
+
 class WindowListener(Protocol):
     """Implemented by robo.core.companion.Companion."""
     def draw(self, cr) -> None: ...          # cr: a cairo.Context sized to the window
@@ -235,6 +274,10 @@ class Platform(ABC):
         return True
 
     def speech_output(self) -> Optional[SpeechOutput]:
+        return None
+
+    def screen_share(self) -> Optional['ScreenShare']:
+        """Letting you show Robo your screen (None if this platform can't)."""
         return None
 
     def speech_input(self) -> Optional[SpeechInput]:

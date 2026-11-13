@@ -70,6 +70,7 @@ class AgentBackend:
     # its own. A CLI that can't switch its own file / shell tools off must say False.
     supports_tasks = False
     tasks_unsupported = 'can only chat for now'
+    supports_images = False         # ask(..., image=png) works: you can show him your screen
     # (value for --model, label) offered in Settings; '' = the CLI's own default
     MODELS = (('', 'Its own default'),)
 
@@ -97,6 +98,10 @@ class AgentBackend:
     def parse(self, stdout, stderr, returncode) -> AgentAnswer:
         raise NotImplementedError
 
+    def command_with_image(self, prompt, system, png):
+        """(argv, stdin bytes) for a question about a picture (supports_images only)."""
+        raise NotImplementedError
+
     def task_command(self, prompt, system, mcp_config, max_turns) -> List[str]:
         """argv that works on a task using only the MCP server in `mcp_config`."""
         raise NotImplementedError
@@ -108,8 +113,9 @@ class AgentBackend:
         return None
 
     # ------------------------------------------------------------ public
-    def ask(self, prompt, system, kind='chat'):
-        """`kind` is what the tokens count toward (robo.agents.usage): 'chat', 'speak_up'."""
+    def ask(self, prompt, system, kind='chat', image=None):
+        """`kind` is what the tokens count toward (robo.agents.usage): 'chat', 'speak_up'.
+        `image`: PNG bytes of what you're showing him (only if supports_images)."""
         from .usage import LEDGER
         exe = self.executable()
         if not exe:
@@ -117,9 +123,13 @@ class AgentBackend:
                              f"I can't find {self.name} on this computer. "
                              f'Check my settings to set it up!')
         os.makedirs(self.workdir, exist_ok=True)
-        argv = self.command(self._with_history(prompt), system)
+        stdin = None
+        if image is not None and self.supports_images:
+            argv, stdin = self.command_with_image(self._with_history(prompt), system, image)
+        else:
+            argv = self.command(self._with_history(prompt), system)
         argv[0] = exe
-        stdout, stderr, code = self._run(argv)
+        stdout, stderr, code = self._run(argv, stdin)
         try:
             answer = self.parse(stdout, stderr, code)
         except AgentError as e:
@@ -160,15 +170,16 @@ class AgentBackend:
         env.setdefault('NO_COLOR', '1')
         return env
 
-    def _run(self, argv):
+    def _run(self, argv, stdin=None):
         log.debug('agent: %s', ' '.join(argv[:3]))
         with self._lock:
             self._cancelled = False
             self._proc = proc = subprocess.Popen(
-                argv, cwd=self.workdir, env=self.env(), stdin=subprocess.DEVNULL,
+                argv, cwd=self.workdir, env=self.env(),
+                stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         try:
-            out, err = proc.communicate(timeout=self.timeout)
+            out, err = proc.communicate(stdin, timeout=self.timeout)
         except subprocess.TimeoutExpired:
             _kill(proc)
             proc.communicate()

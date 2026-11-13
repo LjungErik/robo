@@ -13,8 +13,8 @@ import os
 import cairo
 
 from robo.core.geometry import Rect
-from robo.platform.base import (IdleMonitor, Platform, Scheduler, SpeechInput, SpeechOutput,
-                                Utterance, WindowHost)
+from robo.platform.base import (IdleMonitor, Platform, Scheduler, ScreenShare, ShareInfo,
+                                SpeechInput, SpeechOutput, Utterance, WindowHost)
 from robo.sandbox import Approver, SandboxBackend, SandboxProcess
 
 
@@ -180,6 +180,50 @@ class FakeEars(SpeechInput):
             self.on_wake()
 
 
+class FakeScreenShare(ScreenShare):
+    """Tests: you "pick" with pick(), and the indicator is a flag."""
+
+    def __init__(self):
+        self.asked = 0
+        self.indicator = False
+        self.frame = b'\x89PNG fake frame'
+        self._started = self._ended = None
+        self.info = None
+
+    def problem(self):
+        return None
+
+    def start(self, on_started, on_ended):
+        self.asked += 1
+        self._started, self._ended = on_started, on_ended
+
+    def pick(self, kind='monitor'):
+        """You chose something in the (pretend) system picker."""
+        from robo.core.geometry import Rect
+        self.info = ShareInfo(kind, Rect(0, 0, 1920, 1080) if kind == 'monitor' else None)
+        self.indicator = True
+        self._started(self.info)
+
+    def cancel(self):
+        self._end('you cancelled')
+
+    @property
+    def active(self):
+        return self.indicator
+
+    def grab(self):
+        return self.frame if self.indicator else None
+
+    def stop(self):
+        self._end('you stopped sharing')
+
+    def _end(self, reason):
+        self.indicator, self.info = False, None
+        ended, self._ended = self._ended, None
+        if ended:
+            ended(reason)
+
+
 class FakeSandbox(SandboxBackend):
     """Pretends to run jobs, on the manual clock. Runs no code at all, so it's
     safe; the real sandboxes are tested in tests/test_sandbox.py."""
@@ -286,6 +330,7 @@ class HeadlessPlatform(Platform):
         self.battery = (76, False)
         self.fake_sandbox = FakeSandbox(self.clock)
         self.fake_approver = FakeApprover()
+        self.share = FakeScreenShare()
         self.tmp_task_dir = None
 
     def clock(self):
@@ -309,6 +354,9 @@ class HeadlessPlatform(Platform):
 
     def speech_input(self):
         return self.ears
+
+    def screen_share(self):
+        return self.share
 
     def battery_percent(self):
         return self.battery

@@ -60,6 +60,10 @@ class LinuxPlatform(Platform):
         from .listen import VoskEars
         return VoskEars()
 
+    def screen_share(self):
+        from .screencast import PortalScreenShare
+        return PortalScreenShare()
+
     def battery_percent(self):
         import glob
         for bat in sorted(glob.glob('/sys/class/power_supply/BAT*')):

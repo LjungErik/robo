@@ -11,7 +11,8 @@ ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'la
            'travel',       # action_arg: 'fly', 'hang' or 'teleport' ('' = whatever he can)
            'agent_task',   # action_arg: JSON {"goal": ..., "read": [paths], "write": [paths]}
            'forget',       # action_arg: 'all', or a word: forget the facts that mention it
-           'design_outfit')  # action_arg: the idea ('' = his own), done by the AI agent
+           'design_outfit',  # action_arg: the idea ('' = his own), done by the AI agent
+           'stop_seeing')  # stop showing him your screen
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,9 @@ class Context:
     outfit_because: str = ''                      # ...and why ("it's winter"; '' = a whim)
     favourite_outfits: Tuple[str, ...] = ()       # the outfits he likes best
     usage_text: str = ''                          # how many AI tokens he used (spoken)
+    seeing: str = ''                              # you're showing him: 'monitor', 'window', ''
+    screen: Optional[bytes] = field(default=None, compare=False, repr=False)  # PNG of it now
+    can_see: bool = False                         # showing him your screen would work here
 
 
 class Brain(ABC):

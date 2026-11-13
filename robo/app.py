@@ -110,6 +110,7 @@ class RoboApp:
             self.robot.on_new_outfit = self._new_outfit
         self.brain = AgentBrain(RuleBrain(), workdir=platform.agent_dir())
         self.brain.configure(settings)
+        self.robot.share = platform.screen_share()     # you can show him your screen
         self.robot.conversation.battery = platform.battery_percent
         self.robot.conversation.attach(self.brain, voice=platform.speech_output(),
                                        ears=platform.speech_input())

@@ -269,9 +269,19 @@ class TalkTest(unittest.TestCase):
         self.assertIn('curious', ctx.personality)          # who he is, for the AI brain
 
 
+def wide_awake(robot):
+    """Midday energy, whatever the real clock says (he yawns late at night)."""
+    from datetime import datetime
+    robot.mind._hour = lambda: 12
+    robot.mind.energy = 1.0
+    robot.initiative.now_dt = lambda: datetime(2026, 6, 3, 12, 0)   # no "it's late" yawn
+    return robot
+
+
 class BodyTest(unittest.TestCase):
     def test_eyes_follow_the_pointer(self):
         robot, p = make_robot()
+        wide_awake(robot)
         p.scheduler.advance(0.5)
         x, y = p.window.pos
         p.window.pointer = (x - 600, y)                     # far left, up high
@@ -290,6 +300,7 @@ class BodyTest(unittest.TestCase):
 
     def test_picked_up_reaction(self):
         robot, p = make_robot()
+        wide_awake(robot)
         robot.mind.happiness = 0.95
         x, y = p.window.pos
         robot.pointer_press(PointerEvent(1, 85, 200, x + 85, y + 200))

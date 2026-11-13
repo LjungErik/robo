@@ -27,14 +27,14 @@ log = logging.getLogger(__name__)
 # always for tasks and goodbye, and for the rest when it's just the short command
 # ("dress up as a pirate"), not a longer request ("...and tell me a pirate fact").
 ALWAYS_LOCAL = frozenset({'abort_task', 'task_status', 'goodbye', 'forget', 'what_remember',
-                          'design_outfit', 'usage'})     # asking about tokens costs none
+                          'design_outfit', 'usage', 'stop_seeing'})     # asking about tokens costs none
 SHORT_LOCAL = frozenset({'undress', 'dress_up', 'travel', 'dance', 'sleep', 'time', 'date',
                          'battery', 'remember_name', 'what_my_name'})
 SHORT_WORDS = 6
 MOODS = ('happy', 'normal', 'surprised', 'sad', 'sing', 'focus', 'cat', 'roar', 'laugh',
          'yawn')
 AGENT_ACTIONS = ('wave', 'cheer', 'hearts', 'laugh', 'dance', 'dress_up', 'undress', 'nap',
-                 'travel', 'agent_task', 'design_outfit')
+                 'travel', 'agent_task', 'design_outfit', 'stop_seeing')
 MAX_SPOKEN = 600                  # characters; he answers out loud, so keep it short
 FORGET_AFTER = 30 * 60            # seconds between conversations before he starts fresh
 
@@ -52,8 +52,9 @@ How to answer:
 - Be warm, playful and helpful. An occasional "beep" or "boop" is welcome.
 - Keep it short: one to three spoken sentences, unless they ask for more.
 - Plain speech only: no markdown, lists, emoji, code blocks or URLs.
-- You can't see the screen, open files, browse or run anything yet. If asked \
-to, say so kindly and help with what you know.
+- You can't see the screen unless the user is showing it to you (your status says \
+so, and then a picture is attached). You can't open files, browse or run anything. \
+If asked to, say so kindly and help with what you know.
 
 Answer with ONE JSON object and nothing else:
 {"say": "what you say out loud", "mood": "<mood>", "action": "<action or null>", \
@@ -68,6 +69,7 @@ action (optional) makes your body do something while you speak:
   wave, cheer, hearts, laugh, dance, nap (after the chat), undress (back to plain Robo),
   dress_up (arg = one of the characters listed in your status),
   travel (fly / hang / teleport around the screen, only if your status says you can),
+  stop_seeing (stop looking at the user's screen, when they say they're done showing you),
   design_outfit (arg = the user's idea, or "" for your own: you design a brand-new outfit
   for yourself, which takes a few minutes; only if your status says you can do tasks).
 If the user lets you choose what to wear, dress_up as what your status says you would \
@@ -114,6 +116,15 @@ def _status_line(ctx):
         bits.append(f'you can travel by: {", ".join(ctx.travel)}')
     if ctx.characters:
         bits.append('characters you can dress up as: ' + ', '.join(ctx.characters))
+    if ctx.seeing:
+        what = 'their whole screen' if ctx.seeing == 'monitor' else 'one window'
+        bits.append(f'the user is SHOWING YOU {what}: the attached picture is what they see '
+                    'right now (the pulsing red border and the red "Robo can see" banner are '
+                    'your own sharing indicator, not their content). Help with what they ask '
+                    'about it, mentioning specific things you see')
+    elif ctx.can_see:
+        bits.append("you can't see the user's screen; if they want you to look, they can "
+                    'right-click you and pick "Show Robo my screen"')
     if ctx.favourite_outfits:
         bits.append('your favourite outfits: ' + ', '.join(ctx.favourite_outfits))
     if ctx.outfit_choice:
@@ -279,20 +290,26 @@ class AgentBrain(Brain):
         job, backend = self._job, self.backend
         self._waiting = (job, on_reply, ctx)
         prompt = f'{_status_line(ctx)}\n{heard}'
-        threading.Thread(target=self._work, args=(job, backend, prompt), daemon=True,
+        image = ctx.screen if ctx.seeing and backend.supports_images else None
+        threading.Thread(target=self._work, args=(job, backend, prompt, image), daemon=True,
                          name='robo-agent').start()
 
     def _local(self, heard, ctx):
         topic = self.rules.topic(heard)
+        if topic == 'see_screen':                # only the AI can look; the rules explain how
+            return not ctx.seeing
+        if ctx.seeing and topic not in ALWAYS_LOCAL and topic != 'stop_seeing':
+            return False                         # you're showing him something: he looks
         if topic in ALWAYS_LOCAL:
             return True
         if topic == 'do_task':                  # the agent does real tasks if it can
             return not ctx.agent_tasks
         return topic in SHORT_LOCAL and len(heard.split()) <= SHORT_WORDS
 
-    def _work(self, job, backend, prompt):
+    def _work(self, job, backend, prompt, image=None):
         try:
-            answer = backend.ask(prompt, SYSTEM_PROMPT)
+            answer = (backend.ask(prompt, SYSTEM_PROMPT, image=image) if image is not None
+                      else backend.ask(prompt, SYSTEM_PROMPT))
             self._results.put((job, answer.text, None))
         except AgentCancelled:
             self._results.put((job, None, None))

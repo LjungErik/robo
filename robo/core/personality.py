@@ -337,6 +337,30 @@ def _outfit_feedback(robot, amount):
         robot.taste.nudge(robot.wardrobe.current.id, amount)
 
 
+# ---------------------------------------------------------------- seeing your screen
+def on_seeing(robot, now):
+    """You picked something to show him: he's all eyes, and asks how he can help."""
+    from robo.conversation import Reply
+    robot.face.show(F.SURPRISED, now, 0.5)
+    robot.face.show(F.ARMS_UP, now, 0.8)
+    robot.body.wake(now)
+    robot.body.stop(now, 4, 6)
+    what = 'your screen' if robot.seeing.kind == 'monitor' else 'that window'
+    opener = Reply(f'I can see {what} now! What do you need help with?', 'happy')
+    talk = robot.conversation
+    if talk.can_hear:
+        talk.start(opener=opener)
+    else:
+        talk.announce(opener.text + ' Double-click me to ask.', 'happy')
+
+
+def on_not_seeing(robot, now, was_seeing):
+    if not was_seeing:
+        return                                  # you closed the picker: nothing to say
+    robot.face.show(F.HAPPY, now, 1.0)
+    robot.conversation.announce("Okay, I can't see your screen any more.", 'happy')
+
+
 def on_settings_applied(robot, now):
     """A little "got it!" hop with a heart."""
     robot.face.show(F.HAPPY, now, 1.2)
@@ -410,6 +434,8 @@ def on_reply(robot, reply, now):
         robot.start_task('agent', json.loads(reply.action_arg))   # asks you first
     elif action == 'abort_task':
         robot.abort_task(everything=reply.action_arg == 'all')
+    elif action == 'stop_seeing':
+        robot.stop_showing()
     elif action == 'design_outfit':
         robot.design_outfit(reply.action_arg or '')
 
