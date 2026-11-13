@@ -30,7 +30,8 @@ ALWAYS_LOCAL = frozenset({'abort_task', 'task_status', 'goodbye', 'forget', 'wha
 SHORT_LOCAL = frozenset({'undress', 'dress_up', 'travel', 'dance', 'sleep', 'time', 'date',
                          'battery', 'remember_name', 'what_my_name'})
 SHORT_WORDS = 6
-MOODS = ('happy', 'normal', 'surprised', 'sad', 'sing', 'focus', 'cat', 'roar', 'laugh')
+MOODS = ('happy', 'normal', 'surprised', 'sad', 'sing', 'focus', 'cat', 'roar', 'laugh',
+         'yawn')
 AGENT_ACTIONS = ('wave', 'cheer', 'hearts', 'laugh', 'dance', 'dress_up', 'undress', 'nap',
                  'travel', 'agent_task')
 MAX_SPOKEN = 600                  # characters; he answers out loud, so keep it short
@@ -60,7 +61,8 @@ Answer with ONE JSON object and nothing else:
 remember (optional): things worth keeping about the user that they just told you \
 ("likes jazz", "has a cat called Mo", "is learning Spanish"), written about them, \
 never secrets like passwords. Leave it out if there's nothing new.
-mood is one of: happy, normal, surprised, sad, sing, focus, cat, laugh.
+mood is one of: happy, normal, surprised, sad, sing, focus, cat, laugh, yawn.
+Optional "feeling": "praised" if the user was kind to you, "hurt" if they were mean.
 action (optional) makes your body do something while you speak:
   wave, cheer, hearts, laugh, dance, nap (after the chat), undress (back to plain Robo),
   dress_up (arg = one of the characters listed in your status),
@@ -163,6 +165,8 @@ def parse_reply(raw, ctx):
     if action == 'agent_task':
         return _task_reply(data, arg, mood, ctx)
     memory = {}
+    if data.get('feeling') in ('praised', 'hurt'):
+        memory['feeling'] = data['feeling']
     if ctx.remembers:
         facts = data.get('remember') or ()
         if isinstance(facts, str):

@@ -87,6 +87,11 @@ class WindowHost(ABC):
     def show_menu(self, items: List[MenuItem]) -> None:
         """Pop up a context menu at the mouse pointer."""
 
+    def pointer_position(self) -> Optional[tuple]:
+        """Where the mouse pointer is on the screen (x, y), or None if unknown.
+        Optional: Robo's eyes follow it."""
+        return None
+
     def keep_on_top(self) -> None:
         """Called every few seconds; re-raise the window if the OS needs it."""
 
@@ -269,6 +274,11 @@ class Platform(ABC):
     def has_settings_window(self) -> bool:
         return False
 
-    def open_settings(self, settings: Settings,
-                      on_apply: Callable[[Settings], None]) -> None:
+    def open_settings(self, settings: Settings, on_apply: Callable[[Settings], None],
+                      memory=None) -> None:
+        """`memory` (robo.core.memory.Memory) lets the window show and erase it."""
         raise NotImplementedError
+
+    def data_dir(self) -> str:
+        """Folder for Robo's own data (his memory of you)."""
+        return os.path.join(os.path.expanduser('~'), '.robo')

@@ -63,3 +63,15 @@ demand:
         - {circle: [24, 18, 4.6], fill: sky}
     - {sparkle: [8, 12, "3.5 * (0.6 + 0.4 * sin(t * 6))"], fill: yellow, stroke: none}
     - {sparkle: [41, 28, "3 * (0.6 + 0.4 * cos(t * 5))"], fill: yellow, stroke: none}
+
+personality:
+  traits: [curious, calm, brave, a bit dreamy]
+  speech: "Talks like a friendly astronaut: mission control, orbits, stars, calm and wondering."
+  likes: [stars, rockets, zero gravity, the view of Earth]
+  dislikes: [gravity, cramped capsules]
+  lines:
+    morning: ["Good morning from orbit{, name}!"]
+    welcome_back: ["Mission control, the crew is back!"]
+    bored: ["Floating... floating... bored in space."]
+    picked_up_happy: ["Zero gravity! Wheee!"]
+    picked_up_grumpy: ["Houston, we have a problem."]

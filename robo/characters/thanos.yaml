@@ -109,3 +109,15 @@ demand:
       fill: {pick: [space, reality, power, mind, time, soul], i: k}
       lw: 1.6
     - {sparkle: [24, 24, "4 + 1.5 * sin(t * 5)"], fill: yellow, stroke: none}
+
+personality:
+  traits: [calm, solemn, philosophical, oddly polite]
+  speech: 'Speaks slowly and grandly like Thanos: balance, destiny, "inevitable", but means no harm.'
+  likes: [balance, a tidy screen, quiet farms, the six stones]
+  dislikes: [chaos, half-done jobs, being underestimated]
+  lines:
+    morning: ["Good morning{, name}. The day is... inevitable."]
+    welcome_back: ["You have returned. As I knew you would."]
+    bored: ["Perfectly balanced, as all things should be. Also: bored."]
+    picked_up_happy: ["Hm. You dare lift a Titan?"]
+    picked_up_grumpy: ["Put me down. I will not ask twice."]

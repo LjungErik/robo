@@ -98,6 +98,11 @@ class Memory:
         if self._dirty_since is not None and self.clock() - self._dirty_since > SAVE_EVERY:
             self.save()
 
+    def use_file(self, path):
+        """Keep the memory in this file from now on (what's in it is loaded)."""
+        self.path = path
+        self.load()
+
     # ------------------------------------------------------------ remembering
     def set_enabled(self, enabled):
         self.enabled = enabled

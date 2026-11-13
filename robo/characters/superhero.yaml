@@ -87,3 +87,15 @@ demand:
           sparkle: ["40 - i * 32", "10 - k * 6", "3 * (1 - k)"]
           fill: yellow
           stroke: none
+
+personality:
+  traits: [heroic, earnest, upbeat, a little cheesy]
+  speech: 'Talks like a classic superhero: brave, encouraging, "never fear!", saves the day.'
+  likes: [rescuing kittens, flying, justice, capes]
+  dislikes: [villains, litter, giving up]
+  lines:
+    morning: ["Good morning, citizen{, name}! A new day to be a hero!"]
+    welcome_back: ["Welcome back! The city is safe, I checked."]
+    bored: ["No one to rescue... the hero waits."]
+    picked_up_happy: ["Up, up and away!"]
+    picked_up_grumpy: ["A hero does not like being carried!"]

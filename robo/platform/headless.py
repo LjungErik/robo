@@ -74,6 +74,11 @@ class OffscreenWindow(WindowHost):
         self.width, self.height = width, height
         self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
 
+    pointer = None                 # tests set (x, y) to move the "mouse"
+
+    def pointer_position(self):
+        return self.pointer
+
     def workarea(self):
         return self._workarea
 
@@ -329,5 +334,8 @@ class HeadlessPlatform(Platform):
     def has_settings_window(self):
         return True
 
-    def open_settings(self, settings, on_apply):
+    def open_settings(self, settings, on_apply, memory=None):
         self.settings_opened.append((settings, on_apply))
+
+    def data_dir(self):
+        return os.path.join(self.task_dir(), 'data')

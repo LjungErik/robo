@@ -22,9 +22,10 @@ from .bubble import BubbleQueue
 from . import characters
 from .evil import EvilMode
 from .effects import Effects
+from . import face as F
 from .face import LOOK_MOVE, WAVE, Face
 from .hacker import HackerMode
-from .initiative import Initiative
+from .initiative import LISTENS_AFTER, Initiative, line_for
 from .memory import Memory
 from .mind import Mind
 from .pose import build_pose
@@ -64,6 +65,8 @@ class Companion:
         self.mind = Mind(self.memory, rng=self.rng)
         self.initiative = Initiative(self.rng)
         self._idle_seconds = 0.0
+        self._next_initiative = 0.0
+        self._last_grab_line = -1e9
         self.conversation = Conversation(self)
         self.body = None            # created in attach(), once we know the screen
         self.bounds = None
@@ -117,6 +120,7 @@ class Companion:
         if self.evil.set_after(settings.effective_evil_after, now) == 'good':
             personality.on_turned_good(self, now)
         self.wardrobe.configure(settings.effective_dress_up_every, settings.characters, now)
+        self.memory.set_enabled(settings.remember_me)
         if settings.look != self.look:
             self.look = settings.look
             self.travel.check(self)              # e.g. no longer Iron Man: come down
@@ -172,8 +176,15 @@ class Companion:
         self.face.update(now, dt)
         self.evil.update(dt)
         self.mind.update(dt, busy=self.busy_working or self.conversation.active,
+                         entertained=self.face.active(F.HOBBY, now),
                          idle_seconds=self._idle_seconds)
         self.memory.update()
+        self._follow_pointer(now)
+        if now >= self._next_initiative:
+            self._next_initiative = now + 1.0
+            choice = self.initiative.choose(self, now)
+            if choice:
+                self.speak_up(*choice)
 
         happened = self.body.update(now, dt, self.bounds, personality.walk_speed(self))
         if happened == 'ready' and not self.bubbles.busy and not self.conversation.active:
@@ -217,6 +228,10 @@ class Companion:
             look = self.look_character
             if look is not None and look.particles:
                 self.effects.emit(look.particles, now, dt, self.body.facing)
+        elif self.face.active(F.HOBBY, now):
+            hobby = self.hobbies().get(self.face.hobby)
+            if hobby is not None and hobby.particles:
+                self.effects.emit(hobby.particles, now, dt, self.body.facing)
         self.effects.update(now)
 
     def _update_travel(self, now, dt):
@@ -227,6 +242,62 @@ class Companion:
         a = self.travel.ability
         if a is not None and a.particles and (self.body.airborne or self.travel.teleporting(now)):
             self.effects.emit(a.particles, now, dt, self.body.facing)
+
+    # ------------------------------------------------------------ being alive
+    def _follow_pointer(self, now):
+        """His eyes follow your mouse pointer (when the platform can tell where it is)."""
+        if self.body.state in ('sleep', 'drag') or self.evil.active:
+            return
+        pos = self.host.pointer_position() if self.host is not None else None
+        if not pos:
+            return
+        x, y, _h, offset = self._window_rect()
+        face_x = self.body.x
+        face_y = y + (layout.GROUND_Y + offset - 85) * self.scale
+        self.face.follow(now, pos[0] - face_x, pos[1] - face_y, self.body.facing)
+
+    def speak_up(self, kind, info=None):
+        """Say something on his own (see robo.core.initiative)."""
+        from robo.conversation import Reply
+        now = self.clock()
+        log.info('speaking up: %s', kind)
+        personality.on_speak_up(self, kind, now)
+        talk = self.conversation
+        if talk.active or talk.voice is talk.silent_voice:
+            return                                 # no voice: the body language says it
+        text = line_for(kind, self.personality(), self.memory.name, self.rng, info)
+        mood = {'late': 'yawn', 'sleepy': 'yawn', 'bored': 'sad'}.get(kind, 'happy')
+        fallback = Reply(text, mood) if text else None
+        listen = kind in LISTENS_AFTER and talk.can_hear
+
+        def deliver(reply):
+            if talk.active or not reply.text:
+                return
+            if listen:
+                talk.start(opener=reply, quiet=True)   # ...and listens for an answer
+            else:
+                talk.announce(reply.text, reply.mood)
+        brain = talk.brain
+        if hasattr(brain, 'compose'):
+            brain.compose(kind, info or {}, talk.context(), deliver, fallback)
+        elif fallback is not None:
+            deliver(fallback)
+
+    def _picked_up(self, now):
+        mood = self.mind.grabbed(now)
+        if mood == 'giggle':
+            self.face.show(F.GIGGLE, now, 60)
+        elif mood == 'grumpy':
+            self.face.show(F.GRUMPY, now, 60)
+        talk = self.conversation
+        if mood in ('giggle', 'grumpy') and self.settings.chattiness != 'off' \
+                and talk.voice is not talk.silent_voice and not talk.active \
+                and now - self._last_grab_line > 45 and self.rng.random() < 0.5:
+            kind = 'picked_up_happy' if mood == 'giggle' else 'picked_up_grumpy'
+            text = line_for(kind, self.personality(), self.memory.name, self.rng)
+            if text:
+                self._last_grab_line = now
+                talk.announce(text, 'happy' if mood == 'giggle' else 'sad')
 
     def dress_up(self, character_id=None):
         if not self.busy_working:              # no costumes over the hacker outfit
@@ -401,6 +472,7 @@ class Companion:
                 return
             self.body.grab(self.clock())
             self.travel.cut_web(self.clock())         # picked up: the web is gone
+            self._picked_up(self.clock())
         self.body.drag_to(ev.root_x - p['ox'] + self.width / 2, ev.root_y - p['oy'])
 
     def pointer_release(self, ev: PointerEvent):
@@ -409,6 +481,8 @@ class Companion:
         now = self.clock()
         p, self._press = self._press, None
         if self.body.state == 'drag':
+            self.face.clear(F.GIGGLE)
+            self.face.clear(F.GRUMPY)
             self.body.drop(now, self.bounds)
             if self.body.state == 'fall':
                 self.travel.on_dropped(self, now)

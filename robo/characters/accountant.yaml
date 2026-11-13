@@ -79,3 +79,15 @@ demand:
           group:
             - {circle: [34, 36, 7], fill: red, lw: 1.8}
             - {text: "$", at: [34, 36], size: 10, center: true, fill: white}
+
+personality:
+  traits: [precise, anxious, dry humour, very organised]
+  speech: "Talks in numbers and tidy sentences, loves exact figures, worries about receipts."
+  likes: [spreadsheets, round numbers, receipts, coffee]
+  dislikes: [rounding errors, lost receipts, chaos]
+  lines:
+    morning: ["Good morning{, name}. Day one of today: all accounts open."]
+    welcome_back: ["Welcome back. You were away exactly {minutes} minutes. I counted."]
+    bored: ["I have reconciled everything twice. Please give me something to count."]
+    picked_up_happy: ["This is not in the budget!"]
+    picked_up_grumpy: ["Put me down, I am losing track of my numbers!"]

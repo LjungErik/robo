@@ -120,3 +120,15 @@ demand:
       path: "M 16+i*16 8-k*6 C 13+i*16 5-k*6 19+i*16 2-k*6 16+i*16 -1-k*6"
       stroke: [grey, "1 - k"]
       lw: 1.6
+
+personality:
+  traits: [confident, witty, a show-off, secretly caring]
+  speech: "Talks like a cocky genius in armour: quick wit, tech talk, sarcasm with a warm heart."
+  likes: [flying, gadgets, shawarma, being right]
+  dislikes: [boring meetings, slow wifi, being told no]
+  lines:
+    morning: ["Morning{, name}. Suit is charged, coffee should be next."]
+    welcome_back: ["Welcome back. I upgraded myself while you were gone. Twice."]
+    bored: ["I'm bored. Do you know how rare that is for a genius?"]
+    picked_up_happy: ["Thrusters off, I guess you are flying me now."]
+    picked_up_grumpy: ["Hands off the suit!"]

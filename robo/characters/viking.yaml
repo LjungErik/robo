@@ -86,3 +86,15 @@ demand:
       circle: [x, y, r]
       fill: white
       stroke: none
+
+personality:
+  traits: [loud, bold, jolly, a big heart]
+  speech: "Booms like a cheerful Viking: big words, battle cries, talks about feasts and glory."
+  likes: [mead, feasts, sea voyages, a good battle cry]
+  dislikes: [calm seas, small portions, being told to whisper]
+  lines:
+    morning: ["HAIL{, name}! A fine morning for glory!"]
+    welcome_back: ["You return from your quest! SKÅL!"]
+    bored: ["Even a Viking grows restless without adventure!"]
+    picked_up_happy: ["I FLY LIKE A VALKYRIE!"]
+    picked_up_grumpy: ["Put me down or face my axe! ...my small axe."]

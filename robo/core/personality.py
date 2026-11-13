@@ -65,6 +65,17 @@ def _next_good_action(robot, now):
     body = robot.body
     if robot.travel.maybe_start(robot, now):    # his everyday look may fly too (Iron Man!)
         return
+    mind = robot.mind
+    if mind.sleepy and robot.settings.naps and now - body.last_sleep > 60 \
+            and robot.rng.random() < 0.45:
+        body.sleep(now, robot.rng.uniform(40, 90))          # can't keep his eyes open
+        return
+    if mind.tired and robot.rng.random() < 0.15:
+        robot.face.show(F.YAWN, now, 2.5)
+        body.rest(now, 3, 5)
+        return
+    if maybe_pastime(robot, now, bored=mind.bored):
+        return
     look = robot.look_character
     r = robot.rng.random()
     if look is not None and look.move and r < SIGNATURE_CHANCE:
@@ -101,6 +112,40 @@ def _look_move(robot, look, now):
     robot.body.rest(now, look.move.seconds + 1, look.move.seconds + 3)
 
 
+# ---------------------------------------------------------------- his own initiative
+def on_speak_up(robot, kind, now):
+    """Body language when he says something on his own (see robo.core.initiative)."""
+    face, body = robot.face, robot.body
+    body.stop(now, 4, 7)
+    if kind in ('first_meeting', 'morning', 'welcome_back'):
+        face.show(F.WAVE, now, 2.2)
+        face.show(F.HAPPY, now, 1.5)
+        face.add_hearts(now, (0.3, 0.6))
+        body.hop(now)
+    elif kind in ('late', 'sleepy'):
+        face.show(F.YAWN, now, 2.5)
+    elif kind == 'break':
+        face.show(F.YAWN, now, 1.5)             # a big stretch, to set an example
+    elif kind == 'bored':
+        face.show(F.SAD, now, 2.0)
+    else:
+        face.show(F.HAPPY, now, 1.0)
+
+
+def maybe_pastime(robot, now, bored=False):
+    """Read, juggle, hum...: what he does when nothing is going on. True if he did."""
+    hobbies = robot.hobbies()
+    if not hobbies or robot.rng.random() > (0.45 if bored else 0.12):
+        return False
+    name = robot.rng.choice(sorted(hobbies))
+    move = hobbies[name]
+    robot.face.hobby = name
+    robot.face.show(F.HOBBY, now, move.seconds)
+    robot.body.rest(now, move.seconds + 1, move.seconds + 3)
+    robot.mind.nudge(boredom=-0.25)
+    return True
+
+
 def nap(robot, now, seconds):
     """Menu: take a nap (comes down first if he's up in the air)."""
     if robot.body.airborne:
@@ -133,6 +178,8 @@ def on_same_bubble_again(robot, now):
 
 def on_pat(robot, now):
     body, face = robot.body, robot.face
+    robot.mind.patted()
+    face.clear(F.SAD)
     if body.wake(now):
         face.show(F.SURPRISED, now, 0.5)
     face.show(F.HAPPY, now, 1.4)
@@ -163,7 +210,9 @@ def on_teleport(robot, change, now):
 
 
 def on_woke(robot, now):
+    robot.mind.napped(now - robot.body.last_sleep)
     robot.face.show(F.SURPRISED, now, 0.5)
+    robot.face.show(F.YAWN, now, 2.0)
 
 
 def on_turned_evil(robot, now):
@@ -231,6 +280,10 @@ def on_settings_applied(robot, now):
 # ---------------------------------------------------------------- conversations
 def on_conversation_started(robot, now):
     body = robot.body
+    robot.mind.chatted()
+    robot.memory.chatted()
+    robot.initiative.talked(now)
+    robot.face.clear(F.HOBBY)
     if body.wake(now):
         robot.face.show(F.SURPRISED, now, 0.5)
     body.stop(now)
@@ -243,6 +296,10 @@ def on_reply(robot, reply, now):
     face, body, wardrobe = robot.face, robot.body, robot.wardrobe
     body.stop(now, 30, 40)                 # stand still while chatting
     action = reply.action
+    if reply.feeling == 'praised':
+        robot.mind.complimented()
+    elif reply.feeling == 'hurt':
+        robot.mind.insulted()
     if reply.user_name:
         robot.memory.remember_name(reply.user_name)
     for fact in reply.remember:
@@ -312,7 +369,9 @@ def on_task_event(robot, event, task, now):
         face.show(F.HAPPY, now, 2.0)
         face.add_hearts(now, (0.2, 0.5))
         robot.review_changes(task)
+        robot.mind.task_done()
         if task.kind == 'agent':                 # tell you what he did
+            robot.memory.remember_task(task.title, task.result)
             robot.conversation.announce(task.result or 'All done!', 'happy')
     elif event == 'failed':
         robot.bubbles.push('warning', now, duration=5.0, dedup=False)
@@ -349,4 +408,4 @@ def walk_speed(robot):
     if robot.evil.active:
         return speed * EVIL_SPEED
     walker = robot.wardrobe.current or robot.look_character
-    return speed * (walker.walk_speed if walker else 1.0)
+    return speed * (walker.walk_speed if walker else 1.0) * robot.mind.walk_factor()

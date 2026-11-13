@@ -160,7 +160,8 @@ class AgentTaskTest(unittest.TestCase):
         self.old_results = agent_task.RESULTS_ROOT
         agent_task.RESULTS_ROOT = self.results
         self.p = HeadlessPlatform()
-        self.robot = build_companion(Settings(agent='claude', dress_up_every=0, evil_after=0),
+        self.robot = build_companion(Settings(agent='claude', dress_up_every=0, evil_after=0,
+                                              chattiness='off'),
                                      self.p)
         self.approver = self.robot.task_env.approver = Yes()
 

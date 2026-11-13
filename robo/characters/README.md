@@ -74,6 +74,8 @@ parts: {hand: [...]}                # replace whole body parts of the base desig
 antenna_y: -130                     # move the antenna up to the top of your hat
 gestures: {flap: {...}}             # arm poses
 particles: {feathers: {...}}        # flying bits
+hobbies: {knit: {gesture: knit, mood: focus, seconds: 8}}   # pastimes (see below)
+personality: {...}                  # who he is (see below)
 ```
 
 ## Travel: flying, hanging, teleporting
@@ -219,6 +221,34 @@ out, a negative `front` lifts the front arm. `place`: `behind` (default),
 `front` (both hands in front of the body) or `over_head` (front arm in front of
 the head). `head_x` slides the head sideways. `robo.yaml` has `rest swing wave
 up scheme fly hover`; any file's gestures can be used by every character.
+
+## Personality and pastimes
+
+```yaml
+personality:
+  traits: [curious, warm, a little cheeky]
+  speech: "Short, warm sentences. Says beep and boop."   # how he talks
+  likes: [pats, music]
+  dislikes: [being ignored]
+  quirks: [hums when he's happy]
+  lines:                       # what he says on his own when there's no AI brain
+    morning: ["Good morning{, name}!"]
+    welcome_back: ["Welcome back{, name}! You were gone {minutes} minutes."]
+```
+
+The AI brain gets all of it with every message, so it stays in character. A costume's
+personality replaces Robo's piece by piece: give only `speech` and a few `lines` and
+the rest stays Robo's. Line kinds: `first_meeting`, `morning`, `welcome_back`,
+`break`, `late`, `bored`, `remark`, `question`, `sleepy`, `picked_up_happy`,
+`picked_up_grumpy`, `put_down`, `task_started`, `hobby`. `{, name}` becomes
+", Erik" once he knows your name (or nothing yet), `{name}` just the name;
+`welcome_back` and `break` can use `{minutes}`, `late` `{time}`.
+
+`hobbies:` are pastimes he picks when nothing is going on (more often when he's
+bored): each is a move (`gesture`, `mood`, `seconds`, optional `particles`). While he
+does one, drawings can check the variable `hobby` (`robo.yaml` draws a book for
+`hobby == 'read'` and juggling balls for `'juggle'`). Eyes can use `look_y` (he looks
+up / down at your mouse pointer) as well as `look`.
 
 ## Particles
 

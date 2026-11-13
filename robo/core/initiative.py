@@ -18,7 +18,6 @@ or asleep, and never two things close together (the gap depends on chattiness).
 What he says comes from the AI brain if there is one, otherwise from the
 `personality.lines` of the character he is (see robo/characters/README.md).
 """
-import time
 from datetime import datetime
 
 AWAY_SECONDS = 5 * 60          # no input this long = you stepped away
@@ -49,7 +48,7 @@ class Initiative:
         self.pending = []                 # (kind, info) things that just happened
         self._away = False
         self._active_since = None         # when you sat down this time
-        self._last_input = None           # wall time of your last input
+        self._away_for = 0.0              # longest idle time seen while you were away
         self._break_said = False
         self._late_said_on = None
         self._next_roll = 0.0
@@ -57,18 +56,14 @@ class Initiative:
     # ------------------------------------------------------------ you
     def on_idle(self, idle_seconds, now, memory=None):
         """Fed by the idle monitor (seconds since your last keyboard / mouse input)."""
-        wall = time.time()
         if idle_seconds >= AWAY_SECONDS:
-            if not self._away:
-                self._away = True
+            self._away = True
+            self._away_for = max(self._away_for, idle_seconds)   # how long you've been gone
             self._active_since = None
             return
-        if self._last_input is not None and self._away:
-            gap = wall - idle_seconds - self._last_input
-        else:
-            gap = 0.0
         if self._away or self._active_since is None:
-            self._away = False
+            gap = self._away_for if self._away else 0.0
+            self._away, self._away_for = False, 0.0
             self._active_since = now - idle_seconds
             self._break_said = False
             seen = memory.saw_you() if memory is not None else None
@@ -79,7 +74,11 @@ class Initiative:
                 self.pending.append(('morning', {}))
             elif gap >= WELCOME_AFTER:
                 self.pending.append(('welcome_back', {'minutes': int(gap // 60)}))
-        self._last_input = wall - idle_seconds
+
+    def talked(self, now):
+        """You chatted with him: greetings waiting to be said are old news now."""
+        self.pending.clear()
+        self.last_spoke = now
 
     def working_minutes(self, now):
         return 0 if self._active_since is None else int((now - self._active_since) // 60)
@@ -111,6 +110,8 @@ class Initiative:
         if hour >= LATE_HOUR and self._late_said_on != today and mind.user_here:
             self._late_said_on = today
             return self._said('late', {'time': self.now_dt().strftime('%H:%M')}, now)
+        if self._next_roll == 0.0:                       # just started: settle in first
+            self._next_roll = now + 120
         if now < self._next_roll:
             return None
         self._next_roll = now + 60                       # roll the dice once a minute

@@ -384,11 +384,12 @@ class RuleBrain(Brain):
         return Reply(self._pick("Aww! You're making my circuits blush!",
                                 'Beep! You are the best human ever!',
                                 'Thank you! I think you are cute too!'), 'happy', icon='heart',
-                     action='hearts')
+                     action='hearts', feeling='praised')
 
     def insult(self, text, ctx):
         return Reply(self._pick('Beep... that hurt my feelings.',
-                                "Oh no. I'm going to need a little hug. And a reboot."), 'sad')
+                                "Oh no. I'm going to need a little hug. And a reboot."), 'sad',
+                     feeling='hurt')
 
     def thanks(self, text, ctx):
         return Reply(self._pick("You're welcome! Beep!", 'Any time, friend!',

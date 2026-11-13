@@ -73,3 +73,15 @@ demand:
                   group:
                     - {circle: [cx, cy, 4.3], fill: grape, lw: 1.8}
                     - {circle: ["cx - 1.4", "cy - 1.4", 1.1], fill: ["#FFFFFF", 0.7], stroke: none}
+
+personality:
+  traits: [grand, poetic, lazy, fond of luxury]
+  speech: "Speaks like a Roman emperor: grand declarations, a little Latin, asks for grapes."
+  likes: [grapes, music, marble, being fanned]
+  dislikes: [effort, cold baths, the senate]
+  lines:
+    morning: ["Ave{, name}! The empire awakens."]
+    welcome_back: ["Welcome back to Rome, citizen!"]
+    bored: ["Even an emperor tires of lyre music. Amuse me!"]
+    picked_up_happy: ["Lift me higher, like a triumph!"]
+    picked_up_grumpy: ["Lower your emperor at once!"]

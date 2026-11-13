@@ -101,6 +101,8 @@ class RoboApp:
 
         # Conversation: RuleBrain for commands, plus an AI agent if one is chosen
         # in settings (Claude / ChatGPT / Gemini through their own logged-in CLI).
+        if store is not None:                  # a real run: his memory lives in a file
+            self.robot.memory.use_file(os.path.join(platform.data_dir(), 'memory.json'))
         self.brain = AgentBrain(RuleBrain(), workdir=platform.agent_dir())
         self.brain.configure(settings)
         self.robot.conversation.battery = platform.battery_percent
@@ -129,7 +131,7 @@ class RoboApp:
 
     # ------------------------------------------------------------ settings
     def open_settings(self):
-        self.platform.open_settings(self.settings, self.apply)
+        self.platform.open_settings(self.settings, self.apply, self.robot.memory)
 
     def apply(self, settings, save=True):
         """Use new settings right away (and remember them)."""
@@ -193,6 +195,7 @@ def main(argv=None):
     try:
         platform.scheduler.run()
     finally:
+        app.robot.memory.save()             # keep what he learned today
         app.robot.conversation.shutdown()   # close the microphone helper
         app.robot.shutdown()                # stop every task sandbox
     return 0

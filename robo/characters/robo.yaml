@@ -95,7 +95,7 @@ layers:
     - if: hobby == 'juggle'                    # three balls going round
       repeat: 3
       vars: {a: "t * 5.5 + i * tau / 3"}
-      circle: ["cos(a) * 13", "-62 + sin(a) * 24", 4]
+      circle: ["cos(a) * 17", "-42 + sin(a) * 11", 4]      # in front of his chest, under his face
       fill: {pick: ["#FF5A64", "#FFD23F", "#4DA8FF"], i: i}
       lw: 1.6
 

@@ -28,6 +28,7 @@ def make_robot(**settings):
     platform = HeadlessPlatform()
     settings.setdefault('dress_up_every', 0)
     settings.setdefault('evil_after', 0)
+    settings.setdefault('chattiness', 'off')
     robot = build_companion(Settings(**settings), platform)
     robot.rng.seed(1)
     return robot, platform

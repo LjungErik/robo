@@ -89,6 +89,7 @@ class Conversation:
         self._wake_word = False
         self._thinking_since = None
         self._announcements = []
+        self._quiet = False
 
     # ------------------------------------------------------------ setup
     def attach(self, brain, voice=None, ears=None):
@@ -140,12 +141,16 @@ class Conversation:
                     and not self.robot.task_env.unavailable_reason())
 
     # ------------------------------------------------------------ control
-    def start(self):
+    def start(self, opener=None, quiet=False):
+        """Start talking. `opener`: a Reply he starts with instead of his usual
+        greeting (when he speaks up on his own); `quiet`: if you don't answer, he
+        just stops instead of saying goodbye."""
         if self.active or self.brain is None:
             return
         now = self.robot.clock()
         log.info('conversation started')
         self.turn = 0
+        self._quiet = quiet
         self.brain.conversation_started(now)
         personality.on_conversation_started(self.robot, now)
         if not self.can_hear:
@@ -154,7 +159,7 @@ class Conversation:
             self._say(CANT_HEAR)
             return
         self.ears.prepare()           # warm up recognition while he says hello
-        self._say(self.brain.greeting(self.context()))
+        self._say(opener or self.brain.greeting(self.context()))
 
     def stop(self):
         """Hush now (e.g. he was clicked)."""
@@ -229,6 +234,7 @@ class Conversation:
             return
         log.info('heard: %s', text)
         self.turn += 1
+        self._quiet = False                       # you answered: a real chat now
         self.state = THINKING
         self._thinking_since = self.robot.clock()
         self.robot.bubbles.discard({MIC}, self._thinking_since)
@@ -241,7 +247,10 @@ class Conversation:
 
     def _silence(self):
         if self.state == LISTENING:
-            self._say(self.brain.farewell(self.context()))
+            if self._quiet:                       # he spoke up, you didn't answer: fine
+                self._finish()
+            else:
+                self._say(self.brain.farewell(self.context()))
 
     def _finish(self):
         now = self.robot.clock()

@@ -94,3 +94,15 @@ demand:
         - {rect: [21, 25, 6, 7], r: 1.5, fill: yellow, lw: 1.4}
         - {sparkle: [9, 10, "4 * tw"], fill: yellow, stroke: none}
         - {sparkle: [40, 8, "3 * (1.6 - tw)"], fill: yellow, stroke: none}
+
+personality:
+  traits: [bold, cheeky, adventurous, loves treasure]
+  speech: 'Talks like a pirate: "arr", "matey", "ahoy", tall tales of the sea.'
+  likes: [treasure, the open sea, his parrot, sea shanties]
+  dislikes: [landlubbers, empty chests, calm winds]
+  lines:
+    morning: ["Ahoy{, name}! Fair winds this mornin'!"]
+    welcome_back: ["Ahoy, matey, back on deck!"]
+    bored: ["Arr, the doldrums. Nothing to plunder."]
+    picked_up_happy: ["Heave ho! I be flyin'!"]
+    picked_up_grumpy: ["Belay that! Put the captain down!"]

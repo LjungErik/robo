@@ -98,6 +98,40 @@ character (`--look ironman` for one run). Some characters don't just walk:
 Right-click → **Fly around** (or say *"fly around!"*) makes him go now. He always
 lands to work on a task, to turn evil, or when he changes into someone who can't fly.
 
+## His personality 💛
+
+Robo isn't just reacting any more: he has a character of his own, feelings that change
+through the day, a memory of you, and he does things without being asked.
+
+- **Who he is.** Curious, warm, playful and a little cheeky, with likes, dislikes and quirks.
+  Each character has its own personality: Spider-Man quips, Thanos is calm and solemn,
+  the pirate says "arr". It's in the character files (`personality:`), and both his own
+  rule book and the AI brain speak in that voice.
+- **How he feels.** His energy follows the time of day (droopy eyes, yawns and more naps
+  late at night), pats, chats and compliments make him happier, being insulted or picked
+  up too often doesn't, and if you ignore him for a long time he gets bored. Ask him
+  *"how are you?"* and he tells you honestly. Picked up, he either giggles (*"Wheee!"*)
+  or grumbles (*"Not now, I'm sleepy..."*), depending on his mood.
+- **He remembers you.** Tell him *"my name is …"* or *"remember that I have a cat called
+  Mo"*, or just chat with the AI brain, which picks things up itself. He greets you by
+  name and remembers the tasks he did for you. Ask *"what do you remember about me?"*,
+  say *"forget that …"* / *"forget everything"*, or see and erase it in
+  **Settings → Personality**. It's kept on this computer
+  (`~/.local/share/robo/memory.json`) and only told to the AI brain while you chat.
+- **He speaks up on his own**, now and then: hello the very first time (and he asks your
+  name), good morning, welcome back after a break, a nudge to take a break after a long
+  stretch of work, *"it's getting late"*, or a small thought or a question to get to know
+  you. Greetings and questions open a chat, so you can just answer; if you don't, he
+  lets it go. With the AI brain he makes these up in character; otherwise they come
+  from his character's `lines`. Choose how often (never / rarely / sometimes / often),
+  break reminders and quiet hours in **Settings → Personality**. He never speaks up
+  during a video or presentation, while you're talking to him, or while he's busy.
+  With *Talk out loud* off he only waves, yawns and so on.
+- **A more alive body.** His eyes follow your mouse pointer, and when he's bored he finds
+  something to do: reads a book (turning pages), juggles or hums.
+  (Under Wayland the pointer is only seen while it's over an X11 window, so his eyes
+  follow it less there.)
+
 ## Your own characters 🎨
 
 What Robo and every character look like, and how they behave, lives in
@@ -339,6 +373,9 @@ robo/
     travel.py             getting around without walking: fly, hang, teleport
     face.py               blinking, glancing, timed expressions, hearts
     personality.py        what he decides to do and how he reacts  <- tweak his character here
+    mind.py               how he feels: energy (time of day), happiness, boredom
+    memory.py             what he remembers about you (a JSON file)
+    initiative.py         when he speaks up on his own, and about what
     evil.py               when to turn evil / good, colour blend, glitch
     characters.py         the characters from the files: costumes, looks, demands
     wardrobe.py           when he dresses up, the poof, signature-move timing
@@ -364,6 +401,7 @@ tests/test_robot.py       python3 -m unittest discover -s tests
 tests/test_characters.py  character files, user characters, flying / hanging / teleporting
 tests/test_agent.py       the AI brain, with fake Claude / Codex / Gemini CLIs
 tests/test_agent_tasks.py agent tasks: the sandboxed MCP tools, a fake agent, the escape test
+tests/test_personality.py memory, moods, speaking up, eyes following the pointer, pastimes
 tests/test_sandbox.py     sandbox rules, checked inside a real sandbox
 ```
 

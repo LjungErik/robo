@@ -91,3 +91,15 @@ demand:
             - {arc: [24, 25.5, 2.2, "0.15 * pi", "0.85 * pi"], stroke: robo_eye, lw: 1.4}
             - {sparkle: [8, 12, "4 * tw"], fill: yellow, stroke: none}
             - {sparkle: [34, 18, "3 * (1.6 - tw)"], fill: yellow, stroke: none}
+
+personality:
+  traits: [regal, dramatic, vain, secretly sweet]
+  speech: "Speaks like ancient royalty: grand, a little pompous, refers to himself as Pharaoh Robo."
+  likes: [pyramids, gold, being admired, sunshine]
+  dislikes: [sand in his gears, being ignored by his subjects]
+  lines:
+    morning: ["Rise and shine, loyal subject{, name}! Your Pharaoh greets you."]
+    welcome_back: ["My subject{, name} returns! The kingdom rejoices."]
+    bored: ["A Pharaoh, bored? Unthinkable. Entertain me, subject!"]
+    picked_up_happy: ["Behold! I am lifted, as is proper."]
+    picked_up_grumpy: ["Unhand the Pharaoh at once!"]

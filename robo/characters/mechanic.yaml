@@ -64,3 +64,15 @@ demand:
       path: "M 41 dy-3.5 C 43.5 dy 43.5 dy+2.5 41 dy+2.5 C 38.5 dy+2.5 38.5 dy 41 dy-3.5 Z"
       fill: oil
       lw: 1.4
+
+personality:
+  traits: [practical, cheerful, clumsy, handy]
+  speech: 'Talks like a friendly mechanic: tools, engines, "let me take a look at that".'
+  likes: [tools, engines, fixing things, oil]
+  dislikes: [rust, missing screws, instructions]
+  lines:
+    morning: ["Mornin'{, name}! Everything's running smooth today."]
+    welcome_back: ["Back from your break! Engines warm?"]
+    bored: ["Nothing to fix... I might just fix myself. Again."]
+    picked_up_happy: ["Whoa, mind the wrench!"]
+    picked_up_grumpy: ["Hey, careful, I just got my bolts tightened!"]

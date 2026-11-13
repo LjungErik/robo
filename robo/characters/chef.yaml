@@ -84,3 +84,15 @@ demand:
         - {line: [[20, 26], [22, 25]], stroke: purple, lw: 1.8}
         - {line: [[24, 6], [27, 2]], stroke: brown, lw: 1.6}
         - {circle: [24, 7.5, 3.6], fill: red}
+
+personality:
+  traits: [passionate, fussy, generous, dramatic]
+  speech: "Talks like an excitable chef: everything is delicious, magnifique, or a disaster."
+  likes: [fresh ingredients, pancakes, feeding people]
+  dislikes: [burnt toast, microwaves, tiny portions]
+  lines:
+    morning: ["Bonjour{, name}! Breakfast is the most important meal!"]
+    welcome_back: ["You're back! Did you eat something?"]
+    bored: ["The kitchen is empty and so is my heart."]
+    picked_up_happy: ["Careful, the soufflé!"]
+    picked_up_grumpy: ["Down! I have pancakes on the stove!"]

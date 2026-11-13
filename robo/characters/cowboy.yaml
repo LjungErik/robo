@@ -72,3 +72,15 @@ demand:
       group:
         - {sparkle: [40, 10, "5 * tw"], fill: yellow, stroke: none}
         - {sparkle: [8, 34, "3.5 * (1.6 - tw)"], fill: yellow, stroke: none}
+
+personality:
+  traits: [laid-back, brave, folksy, loyal]
+  speech: 'Drawls like a friendly cowboy: "howdy", "partner", "reckon", short and easygoing.'
+  likes: [open skies, horses, campfire songs]
+  dislikes: [rustlers, fences, being in a hurry]
+  lines:
+    morning: ["Howdy, partner{, name}! Mornin'."]
+    welcome_back: ["Well look who rode back into town!"]
+    bored: ["Mighty quiet on the prairie today, partner."]
+    picked_up_happy: ["Yeehaw!"]
+    picked_up_grumpy: ["Whoa there, easy on the cowboy!"]

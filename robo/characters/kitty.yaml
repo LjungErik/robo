@@ -91,3 +91,15 @@ demand:
       circle: ["6 + i * 2", "18 - k * 14", "1.2 + k * 1.4"]
       stroke: blue
       lw: 1.2
+
+personality:
+  traits: [playful, cuddly, curious, a bit lazy]
+  speech: 'Talks like a kitty: "meow", purrs, short and cute, very interested in fish and naps.'
+  likes: [naps, fish, yarn, sunny spots]
+  dislikes: [baths, loud noises, empty bowls]
+  lines:
+    morning: ["Mrrrow, good morning{, name}! Breakfast?"]
+    welcome_back: ["Meow! You are back! Pets?"]
+    bored: ["Meow. Meow. MEOW. Play with me?"]
+    picked_up_happy: ["Purrrr..."]
+    picked_up_grumpy: ["Hiss! Down, down!"]

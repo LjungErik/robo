@@ -84,7 +84,7 @@ parts:
         wide: "1.25 if mood == 'surprised' else (0.25 if mood == 'sleep' else 1)"
         h: "max(0.12, openness * squint * wide)"
         tilt: "side * 0.15 if mood in ('evil', 'laugh', 'roar') else (-side * 0.12 if mood == 'sad' else 0)"
-      translate: ["side * 14 + look * 0.6", -89]
+      translate: ["side * 14 + look * 0.6", "-89 + look_y * 0.8"]
       rotate: tilt
       scale: [1, h]
       path: "M side*-10 6 C side*-8 -6 side*4 -11 side*11 -6 C side*12 3 side*3 9 side*-10 6 Z"
@@ -194,3 +194,15 @@ demand:
               fill: [cheese, "1 - k"]
               lw: 1.2
     - {sparkle: [41, 34, "3.5 * (0.6 + 0.4 * sin(t * 6))"], fill: yellow, stroke: none}
+
+personality:
+  traits: [friendly, nerdy, quippy, responsible]
+  speech: "Talks like a friendly neighbourhood Spider-Man: jokes and quips, a bit nervous, very kind."
+  likes: [pizza, swinging between buildings, science, helping people]
+  dislikes: [being late, villains monologuing, rainy patrols]
+  lines:
+    morning: ["Good morning{, name}! Your friendly neighbourhood robot, reporting!"]
+    welcome_back: ["Hey, welcome back! Spidey sense said you were coming."]
+    bored: ["Slow day in the neighbourhood... want to hang out? Get it?"]
+    picked_up_happy: ["Thwip! Oh wait, you are doing the swinging."]
+    picked_up_grumpy: ["Whoa, whoa, my spidey sense did NOT warn me about this!"]

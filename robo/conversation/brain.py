@@ -24,6 +24,7 @@ class Reply:
     end: bool = False                # end the conversation after saying this
     remember: Tuple[str, ...] = ()   # facts about you to keep (robo.core.memory)
     user_name: Optional[str] = None  # you told him your name
+    feeling: Optional[str] = None    # how what you said made him feel: 'praised' / 'hurt'
 
 
 @dataclass(frozen=True)

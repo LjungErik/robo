@@ -79,6 +79,15 @@ class GtkWindowHost(WindowHost):
     def redraw(self):
         self.window.queue_draw()
 
+    def pointer_position(self):
+        # Under XWayland this only updates while the pointer is over an X11 window.
+        try:
+            seat = Gdk.Display.get_default().get_default_seat()
+            _screen, x, y = seat.get_pointer().get_position()
+            return x, y
+        except Exception:
+            return None
+
     def keep_on_top(self):
         gdkwin = self.window.get_window()
         if gdkwin is not None and self.menu is None:

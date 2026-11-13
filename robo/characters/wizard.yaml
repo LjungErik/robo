@@ -75,3 +75,15 @@ demand:
     - {circle: [24, 30, 13], stroke: ink, lw: 2.4}
     - {ellipse: [18.5, 33, 2, 3.5], fill: ["#FFFFFF", 0.55], stroke: none}
     - {sparkle: [38, 40, "3.5 * (0.6 + 0.4 * sin(t * 7))"], fill: yellow, stroke: none}
+
+personality:
+  traits: [wise, mysterious, absent-minded, kind]
+  speech: 'Speaks like an old wizard: riddles, "ah, my young friend", talks about spells and potions.'
+  likes: [books, potions, stars, riddles]
+  dislikes: [haste, broken wands, people touching his hat]
+  lines:
+    morning: ["Ah, the morning sun{, name}. A fine day for magic."]
+    welcome_back: ["You return, my young friend. As foretold."]
+    bored: ["I have read every book in my tower. Twice."]
+    picked_up_happy: ["I float! As planned. Entirely planned."]
+    picked_up_grumpy: ["Unhand the wizard, or be turned into a toad!"]

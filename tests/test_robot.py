@@ -18,6 +18,7 @@ from robo.render.icons import ICONS, icon_kinds  # noqa: E402
 
 def make_robot(**settings):
     platform = HeadlessPlatform()
+    settings.setdefault('chattiness', 'off')       # tests/test_personality.py covers speaking up
     robot = build_companion(Settings(**settings), platform)
     robot.rng.seed(1)
     return robot, platform

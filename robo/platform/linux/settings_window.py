@@ -166,6 +166,8 @@ class SettingsWindow:
         self._loading = False
         self._timer = None
         self._hover = None
+        self.memory = None
+        self._memory_box = None
         self._picking = False
         self._chip_art = []
         self._apply_time = -10.0
@@ -174,10 +176,12 @@ class SettingsWindow:
         self.effects = Effects(random.Random())
 
     # ------------------------------------------------------------ public
-    def open(self, settings, on_apply):
+    def open(self, settings, on_apply, memory=None):
         self.on_apply = on_apply
+        self.memory = memory
         if self.win is None:
             self._build()
+        self._show_memory()
         self.applied = settings
         self._load(settings)
         self.snapshot = self._read()
@@ -242,6 +246,9 @@ class SettingsWindow:
             sw.connect('notify::active', self._changed)
             top.pack_end(sw, False, False, 0)
             control = _Control(row, sw.get_active, sw.set_active)
+            if f.kind == 'memory':                # ...and what he remembers, to erase
+                self._memory_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+                row.pack_end(self._memory_box, False, False, 0)
         elif f.kind in ('float', 'seconds'):
             control = self._slider(f, row, top)
         elif f.kind == 'characters':
@@ -308,7 +315,8 @@ class SettingsWindow:
         status = _style(Gtk.Label(xalign=0), 'robo-help')
         status.set_line_wrap(True)
         status.set_selectable(True)            # so you can copy the install / login command
-        row.pack_start(status, False, False, 0)
+        if f.key == 'agent':                   # only the AI brain has a status to show
+            row.pack_start(status, False, False, 0)
 
         def changed(*_):
             if f.key == 'agent':
@@ -341,6 +349,44 @@ class SettingsWindow:
             GLib.idle_add(lambda: label.get_text().startswith('Checking ' + backend.name)
                           and label.set_text(text) and False)
         threading.Thread(target=check, daemon=True).start()
+
+    def _show_memory(self):
+        """List what he remembers, with a ✕ per fact and Forget everything."""
+        box, mem = self._memory_box, self.memory
+        if box is None:
+            return
+        for child in box.get_children():
+            box.remove(child)
+        if mem is None:
+            box.show_all()
+            return
+        facts = ([f'Your name: {mem.name}'] if mem.name else []) + \
+            [f['text'] for f in mem.facts]
+        if not facts:
+            box.pack_start(_style(Gtk.Label(label="He doesn't remember anything about you yet.",
+                                            xalign=0), 'robo-help'), False, False, 0)
+        for i, text in enumerate(facts):
+            line = Gtk.Box(spacing=6)
+            label = Gtk.Label(label='• ' + text, xalign=0)
+            label.set_line_wrap(True)
+            line.pack_start(label, True, True, 0)
+            x = Gtk.Button(label='✕')
+            x.set_relief(Gtk.ReliefStyle.NONE)
+            x.set_tooltip_text('Forget this')
+            if mem.name and i == 0:
+                x.connect('clicked', lambda *_: (setattr(mem, 'name', ''), mem.save(),
+                                                 self._show_memory()))
+            else:
+                k = i - (1 if mem.name else 0)
+                x.connect('clicked', lambda *_a, k=k: (mem.forget_fact(k), self._show_memory()))
+            line.pack_end(x, False, False, 0)
+            box.pack_start(line, False, False, 0)
+        if facts or mem.tasks:
+            forget = _style(Gtk.Button(label='Forget everything'), 'robo-secondary')
+            forget.set_halign(Gtk.Align.START)
+            forget.connect('clicked', lambda *_: (mem.forget('all'), self._show_memory()))
+            box.pack_start(forget, False, False, 0)
+        box.show_all()
 
     def _chip_flow(self):
         flow = Gtk.FlowBox()

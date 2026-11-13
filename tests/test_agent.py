@@ -163,7 +163,7 @@ class AgentBrainTest(unittest.TestCase):
 class ConversationTest(unittest.TestCase):
     def test_talking_to_him_with_an_agent(self):
         p = HeadlessPlatform()
-        robot = build_companion(Settings(dress_up_every=0, evil_after=0), p)
+        robot = build_companion(Settings(dress_up_every=0, evil_after=0, chattiness='off'), p)
         fake = FakeBackend(['{"say": "The sky is blue because of sunlight scattering.", '
                             '"action": "wave"}'])
         brain = robot.conversation.brain
