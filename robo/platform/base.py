@@ -36,6 +36,7 @@ class PointerEvent:
 class MenuItem:
     label: Optional[str]                     # None = separator
     action: Optional[Callable[[], None]] = None
+    icon: Optional[str] = None               # a picture to show before the label ('settings')
 
     @classmethod
     def separator(cls):

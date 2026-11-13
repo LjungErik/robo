@@ -16,6 +16,10 @@ import cairo  # noqa: E402
 
 from robo.core.geometry import Rect  # noqa: E402
 from robo.platform.base import PointerEvent, WindowHost  # noqa: E402
+from robo.render.settings_icon import settings_icon_surface  # noqa: E402
+
+MENU_ICON_PX = 16
+MENU_ICONS = {'settings': settings_icon_surface}
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +103,7 @@ class GtkWindowHost(WindowHost):
             if item.label is None:
                 menu.append(Gtk.SeparatorMenuItem())
                 continue
-            mi = Gtk.MenuItem(label=item.label)
+            mi = self._menu_item(item)
             mi.connect('activate', lambda _mi, fn=item.action: fn())
             menu.append(mi)
         menu.connect('deactivate', lambda *_: setattr(self, 'menu', None))
@@ -109,6 +113,20 @@ class GtkWindowHost(WindowHost):
             menu.popup_at_pointer(self._last_button_event)
         else:
             menu.popup_at_pointer(None)
+
+    def _menu_item(self, item):
+        draw = MENU_ICONS.get(item.icon)
+        if draw is None:
+            return Gtk.MenuItem(label=item.label)
+        scale = max(1, self.window.get_scale_factor())
+        surface = draw(MENU_ICON_PX * scale)
+        surface.set_device_scale(scale, scale)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.pack_start(Gtk.Image.new_from_surface(surface), False, False, 0)
+        box.pack_start(Gtk.Label(label=item.label, xalign=0), True, True, 0)
+        mi = Gtk.MenuItem()
+        mi.add(box)
+        return mi
 
     # ------------------------------------------------------------ GTK signals
     @staticmethod

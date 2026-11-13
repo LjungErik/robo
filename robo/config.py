@@ -176,6 +176,7 @@ class Field:
 SECTIONS = (
     # id, title, emoji
     ('robo', 'Robo', '🤖'),
+    ('look', 'Everyday look', '👀'),
     ('bubbles', 'Speech bubbles', '💬'),
     ('evil', 'Evil mode', '😈'),
     ('dress', 'Dressing up', '🎭'),
@@ -185,13 +186,22 @@ SECTIONS = (
     ('advanced', 'Advanced', '🔧'),
 )
 
+TABS = (
+    # id, title, emoji, the SECTIONS shown on that tab (as cards, in this order)
+    ('general', 'General', '🤖', ('robo', 'bubbles', 'advanced')),
+    ('characters', 'Characters', '🎭', ('look', 'dress')),
+    ('voice', 'Voice', '🗣️', ('voice',)),
+    ('personality', 'Personality', '💛', ('personality', 'evil')),
+    ('brain', 'AI brain', '🧠', ('brain',)),
+)
+
 FIELDS = (
     Field('scale', 'Size', 'robo', 'float', 'How big Robo is on your screen.',
           min=0.5, max=4.0, step=0.1, fmt=fmt_times),
     Field('walk_speed', 'Walking speed', 'robo', 'float', 'From leisurely stroll to zoomies.',
           min=0.3, max=3.0, step=0.1, fmt=fmt_times),
     Field('naps', 'Naps', 'robo', 'bool', 'Let him doze off now and then (zzz).'),
-    Field('look', 'Look', 'robo', 'look',
+    Field('look', 'Look', 'look', 'look',
           'Who he is the rest of the time. Some can fly around the screen! '
           'Add your own in ~/.config/robo/characters.'),
     Field('bubble_seconds', 'Bubble time', 'bubbles', 'float',

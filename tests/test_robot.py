@@ -209,11 +209,27 @@ class CostumeTest(unittest.TestCase):
             if character.particles:
                 self.assertTrue(robot.effects.particles, cid)
 
-    def test_menu_offers_dress_up(self):
+    def test_menu_is_short(self):
         robot, p = make_robot()
         robot.pointer_press(PointerEvent(3, 85, 200, 0, 0))
-        labels = [i.label for i in p.window.menus[-1]]
-        self.assertTrue(any('Dress up' in l for l in labels))
+        labels = [i.label or '' for i in p.window.menus[-1]]
+        for gone in ('Dress up', 'Wave hello', 'Show all icons'):
+            self.assertFalse(any(gone in l for l in labels), gone)
+        self.assertTrue(any('Talk to me' in l for l in labels))
+
+    def test_menu_offers_back_to_normal_while_dressed(self):
+        robot, p = make_robot(dress_up_every=0)
+        robot.dress_up(characters.costume_ids()[0])
+        p.scheduler.advance(1)
+        robot.pointer_press(PointerEvent(3, 85, 200, 0, 0))
+        labels = [i.label or '' for i in p.window.menus[-1]]
+        self.assertTrue(any('Back to normal' in l for l in labels))
+
+    def test_every_setting_is_on_a_tab(self):
+        from robo.config import FIELDS, TABS
+        on_tabs = {sid for _t, _n, _e, sids in TABS for sid in sids}
+        for f in FIELDS:
+            self.assertIn(f.section, on_tabs, f.key)
 
 
 if __name__ == '__main__':

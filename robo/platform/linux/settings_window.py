@@ -1,7 +1,8 @@
 """Robo's settings window (GTK 3), styled like Robo himself.
 
 The form is generated from robo.config.FIELDS, so adding a setting there
-adds it here automatically. Nothing changes until Apply is pressed; Apply
+adds it here automatically: each field's section is a card, and the cards
+are grouped into tabs by robo.config.TABS. Nothing changes until Apply is pressed; Apply
 calls on_apply(settings), which saves them and updates the running robot.
 
 The header shows Robo (in the look you picked) in his mechanic outfit
@@ -21,7 +22,7 @@ gi.require_foreign('cairo')
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 import cairo  # noqa: E402
 
-from robo.config import FIELDS, FIELDS_BY_KEY, SECTIONS, Settings  # noqa: E402
+from robo.config import FIELDS, FIELDS_BY_KEY, SECTIONS, TABS, Settings  # noqa: E402
 from robo.core import layout  # noqa: E402
 from robo.core.bubble import Bubble  # noqa: E402
 from robo.core import characters  # noqa: E402
@@ -29,9 +30,10 @@ from robo.core.effects import Effects  # noqa: E402
 from robo.core.pose import Pose  # noqa: E402
 from robo.render.robot import draw_robot  # noqa: E402
 from robo.render.scene import draw_frame  # noqa: E402
-from robo.render.shapes import INK, circle, hexc, paint  # noqa: E402
+from robo.render.settings_icon import draw_gear, settings_icon_surface  # noqa: E402
+from robo.render.shapes import hexc  # noqa: E402
 
-HEADER_HEIGHT = 190
+HEADER_HEIGHT = 150
 CHIP_W, CHIP_H = 80, 92
 FRAME_MS = 33
 
@@ -98,6 +100,17 @@ CSS = b"""
 .robo-secondary { background-color: #FFFFFF; }
 .robo-secondary:hover { background-color: #F4F7FB; }
 .robo-status { font-weight: 700; }
+.robo-tabs {
+    background-color: #EEF1F8; border-bottom: 2px solid #3B4060; padding: 8px 12px;
+}
+.robo-tab {
+    background-image: none; background-color: #F4F7FB; border: 2px solid #C9D1E3;
+    border-radius: 14px; padding: 4px 6px; box-shadow: none; text-shadow: none;
+}
+.robo-tab:hover { border-color: #3B4060; }
+.robo-tab:checked { background-color: #FFF1B8; border-color: #3B4060; }
+.robo-tab-emoji { font-size: 15pt; }
+.robo-tab-label { font-weight: 800; font-size: 9pt; }
 """
 
 BG_TOP = hexc('#D9F6EE')
@@ -135,18 +148,16 @@ def _pass_scroll_to_page(widget, _event):
 
 
 def _gear(cr, cx, cy, r, teeth, angle, color):
-    cr.save()
-    cr.translate(cx, cy)
-    cr.rotate(angle)
-    cr.new_path()
-    step = math.pi / teeth
-    for i in range(teeth * 2):
-        cr.arc(0, 0, r if i % 2 == 0 else r * 0.78, i * step, (i + 1) * step)
-    cr.close_path()
-    paint(cr, color, INK, 2.2)
-    circle(cr, 0, 0, r * 0.3)
-    paint(cr, BG_BOTTOM, INK, 2)
-    cr.restore()
+    draw_gear(cr, cx, cy, r, teeth, angle, color, hole=BG_BOTTOM)
+
+
+def _window_icons():
+    """Robo's face with a gear, at the sizes window managers like."""
+    icons = []
+    for size in (16, 24, 32, 48, 64, 128):
+        surface = settings_icon_surface(size)
+        icons.append(Gdk.pixbuf_get_from_surface(surface, 0, 0, size, size))
+    return icons
 
 
 class _Control:
@@ -195,9 +206,10 @@ class SettingsWindow:
     def _build(self):
         _install_css()
         w = self.win = Gtk.Window(title="Robo's Settings")
-        w.set_default_size(520, 780)
+        w.set_default_size(540, 760)
         w.set_position(Gtk.WindowPosition.CENTER)
-        w.set_icon_name('face-smile')
+        icons = _window_icons()
+        w.set_icon_list(icons)
         _style(w, 'robo-settings')
         w.connect('delete-event', self._on_close)
 
@@ -205,6 +217,7 @@ class SettingsWindow:
         hb.set_show_close_button(True)
         hb.set_title("Robo's Settings")
         hb.set_subtitle('Tune your little robot')
+        hb.pack_start(Gtk.Image.new_from_pixbuf(icons[1]))
         w.set_titlebar(hb)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -213,19 +226,59 @@ class SettingsWindow:
         self.header.connect('draw', self._draw_header)
         root.pack_start(self.header, False, False, 0)
 
-        scroller = Gtk.ScrolledWindow()
-        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.stack.set_transition_duration(150)
+        self.tabs = {}
+        tab_bar = _style(Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6), 'robo-tabs')
+        tab_bar.set_homogeneous(True)
+        group = None
+        for tid, title, emoji, section_ids in TABS:
+            page = self._tab_page(section_ids)
+            if page is None:
+                continue
+            self.stack.add_named(page, tid)
+            group = btn = self._tab_button(tid, title, emoji, group)
+            tab_bar.pack_start(btn, True, True, 0)
+        root.pack_start(tab_bar, False, False, 0)
+        root.pack_start(self.stack, True, True, 0)
+        root.pack_start(self._action_bar(), False, False, 0)
+        w.add(root)
+
+    def _tab_page(self, section_ids):
+        """One tab: its sections' cards (scrolling only if a tab is very tall)."""
+        titles = {sid: (title, emoji) for sid, title, emoji in SECTIONS}
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         for side in ('top', 'bottom', 'start', 'end'):
             getattr(content, f'set_margin_{side}')(18)
-        for sid, title, emoji in SECTIONS:
+        empty = True
+        for sid in section_ids:
             fields = [f for f in FIELDS if f.section == sid]
             if fields:
-                content.pack_start(self._card(title, emoji, fields), False, False, 0)
+                empty = False
+                content.pack_start(self._card(*titles[sid], fields), False, False, 0)
+        if empty:
+            return None
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.add(content)
-        root.pack_start(scroller, True, True, 0)
-        root.pack_start(self._action_bar(), False, False, 0)
-        w.add(root)
+        return scroller
+
+    def _tab_button(self, tid, title, emoji, group):
+        btn = _style(Gtk.RadioButton.new_from_widget(group), 'robo-tab')
+        btn.set_mode(False)                    # a button, not a radio circle
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.pack_start(_style(Gtk.Label(label=emoji), 'robo-tab-emoji'), False, False, 0)
+        box.pack_start(_style(Gtk.Label(label=title), 'robo-tab-label'), False, False, 0)
+        btn.add(box)
+        btn.connect('toggled', lambda b: b.get_active() and self.stack.set_visible_child_name(tid))
+        self.tabs[tid] = btn
+        return btn
+
+    def show_tab(self, tid):
+        if tid in self.tabs:
+            self.tabs[tid].set_active(True)
+            self.stack.set_visible_child_name(tid)
 
     def _card(self, title, emoji, fields):
         card = _style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12), 'robo-card')

@@ -23,7 +23,7 @@ from . import characters
 from .evil import EvilMode
 from .effects import Effects
 from . import face as F
-from .face import LOOK_MOVE, WAVE, Face
+from .face import LOOK_MOVE, Face
 from .hacker import HackerMode
 from .initiative import LISTENS_AFTER, Initiative, line_for
 from .memory import Memory
@@ -515,7 +515,7 @@ class Companion:
     # ------------------------------------------------------------ menu
     def menu_items(self):
         now = self.clock
-        items = [MenuItem('👋  Wave hello', lambda: self.face.show(WAVE, now(), 2.5))]
+        items = []
         if self.busy_working:
             items.append(MenuItem('🛑  Abort task', self.abort_task))
         else:
@@ -527,13 +527,9 @@ class Companion:
                 items.append(MenuItem('☀️  Wake up', lambda: self.body.wake(now())))
             else:
                 items.append(MenuItem('😴  Take a nap', lambda: personality.nap(self, now(), 60)))
-        if self.busy_working:
-            pass                                  # no costumes while hacking
-        elif self.wardrobe.current:
+        if self.wardrobe.current and not self.busy_working:
             items.append(MenuItem('👕  Back to normal',
                                   lambda: personality.on_costume_clicked(self, now())))
-        else:
-            items.append(MenuItem('🎭  Dress up', self.dress_up))
         if not self.busy_working and self.travel.abilities(self):
             label = {'fly': '🚀  Fly around', 'hang': '🕸️  Swing up',
                      'teleport': '✨  Teleport'}.get(self.travel.abilities(self)[0].kind)
@@ -543,8 +539,7 @@ class Companion:
         else:
             items.append(MenuItem('🎤  Talk to me', self.talk))
         if self.on_open_settings:
-            items.append(MenuItem('⚙️  Settings…', self.on_open_settings))
-        items += [MenuItem('🎨  Show all icons', self.demo),
-                  MenuItem.separator(),
+            items.append(MenuItem('Settings…', self.on_open_settings, icon='settings'))
+        items += [MenuItem.separator(),
                   MenuItem('Quit', self.quit)]
         return items
