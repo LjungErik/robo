@@ -129,14 +129,49 @@ he cheers and shows a ✅ laptop bubble, then changes back.
   as anything else, and doesn't turn evil while he has a task.
 
 How it works: `robo/tasks/` is pure logic. `Task` (`base.py`) has the lifecycle
-(start, pause, resume, abort, done), `TaskManager` (`manager.py`) runs
+(start, pause, resume, abort, done, failed), `TaskManager` (`manager.py`) runs
 `max_parallel` tasks at once (1 today), queues the rest, and pauses for each
 interruption reason (`'conversation'`, `'held'`). `catalog.py` lists the kinds of
-task. To add a real one: subclass `Task`, implement `is_done()` (and `progress()`),
-register it in `TASK_KINDS`, and add a phrase to `RuleBrain` that replies with
-`action='start_task', action_arg='<kind>'`. `robo/core/hacker.py` decides how he
-looks (outfit, sitting, typing). Its outfit is in `WORK_OUTFITS` in
-`robo/render/costumes.py`.
+task. `robo/core/hacker.py` decides how he looks (outfit, sitting, typing). Its
+outfit is in `WORK_OUTFITS` in `robo/render/costumes.py`.
+
+To add a real task:
+1. Write its job in `robo/sandbox/worker/jobs.py`. This code runs inside the sandbox.
+2. Add a factory to `TASK_KINDS` in `robo/tasks/catalog.py` that returns a
+   `SandboxedTask` with the `Permissions` it needs (default: none).
+3. Add a phrase to `RuleBrain` that replies with
+   `action='start_task', action_arg='<kind>'`.
+
+## Sandbox 🔒
+
+Every task runs in a **sandbox**: a separate process that can only reach what you
+allowed. Robo himself (window, microphone, chatting) stays outside it.
+
+| The task can't... | because |
+|---|---|
+| see or delete your files | It only sees its own folder (`~/.local/share/robo/tasks/<id>/work`), plus files you granted. |
+| change your files behind your back | Files you let it change are **copies**. When it's done Robo lists what changed and asks before applying anything. Edits to files you changed meanwhile are skipped, and symlinks it makes never leave the sandbox. |
+| download anything you didn't allow | It has no network at all. Downloads go through Robo, who checks each one against the hosts you approved (redirects too). |
+| become root | It runs as your normal user with no way to gain more rights: no `sudo`, `pkexec` or setuid programs, and no capabilities. |
+| touch your desktop | No display, D-Bus, keyring, ssh-agent or environment variables of yours. |
+| hog the computer | Memory, process count, one CPU core, file size and running time are all capped. |
+
+- A task that needs anything (reading or changing files, downloading) **asks you
+  first** in a dialog. Closing the dialog means no.
+- If no sandbox is available, Robo **refuses** to do tasks and tells you why. It never
+  falls back to running them unprotected.
+- On Linux the sandbox is [bubblewrap](https://github.com/containers/bubblewrap)
+  (`sudo apt install bubblewrap`) with `systemd-run --user` for the limits.
+- The worker's output goes to `worker.log` next to its `work/` folder. The 20 newest
+  workspaces are kept.
+
+How it works: `robo/sandbox/` is portable. `Permissions` says what a task may
+touch, `Workspace` makes its folder and stages copies, `Broker` handles requests
+from inside, `Approver` asks you, and `worker/` is the stdlib-only code that runs
+inside. Each OS supplies a `SandboxBackend` (`robo/sandbox/backend.py` lists the
+rules it must follow, with ideas for Windows and macOS) from `Platform.sandbox()`.
+`tests/test_sandbox.py` has a `SandboxConformance` suite that checks those rules
+from inside a real sandbox. Run it against any new backend.
 
 ## Interacting
 
@@ -185,7 +220,10 @@ robo/
   settings_store.py       settings.json load / save / change detection
   audio.py                voice effects (robot filter, chirps, mouth envelope)
   conversation/           his brain: Brain interface + RuleBrain (keyword switch)
-  tasks/                  work you give him: Task lifecycle, TaskManager (queue, pauses), catalog
+  tasks/                  work you give him: Task lifecycle, TaskManager (queue, pauses), catalog,
+                          SandboxedTask
+  sandbox/                portable sandbox parts: Permissions, Workspace + change review,
+                          Broker (downloads), Approver; worker/ runs inside the sandbox
   events.py               Event, list of KINDS, classify() for notification text
   core/                   the robot itself, pure Python (no GUI or OS calls)
     companion.py          ties everything together; the only thing the platform talks to
@@ -209,9 +247,11 @@ robo/
     base.py               the contract a port implements
     linux/                GTK window, GLib loop, D-Bus notifications, battery, network,
                           updates, idle monitor, single-instance lock, settings window,
-                          voice (espeak-ng) and ears (Vosk helper process)
+                          voice (espeak-ng) and ears (Vosk helper process),
+                          task sandbox (bubblewrap) and permission dialogs
     headless.py           off-screen fake platform used by the tests
 tests/test_robot.py       python3 -m unittest discover -s tests
+tests/test_sandbox.py     sandbox rules, checked inside a real sandbox
 ```
 
 Data flows one way: an **EventSource** emits an `Event`, then the `Companion`
@@ -237,6 +277,8 @@ new `robo/platform/<os>/` package that implements the classes in
 | settings window (optional) | GTK 3, built from `config.FIELDS` | Qt / Tk form from the same `FIELDS` | same |
 | `SpeechOutput` | Piper (nice) + espeak-ng (evil), `robo/audio.py` | Piper works there too | Piper works there too |
 | `SpeechInput` | Vosk helper process | Vosk works there too | Vosk works there too |
+| `SandboxBackend` | bubblewrap + `systemd-run --user` | AppContainer + Job Object | `sandbox-exec` profile + `setrlimit` |
+| `Approver` | GTK dialogs | Qt / WinUI dialog | `NSAlert` |
 
 Any piece can also be swapped on Linux. For example, a Qt window instead of
 GTK only means writing a new `WindowHost` and returning it from

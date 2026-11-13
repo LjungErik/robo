@@ -19,6 +19,7 @@ from typing import Callable, List, Optional, Protocol
 from robo.config import Settings
 from robo.core.geometry import Rect
 from robo.events import EventSink
+from robo.sandbox import Approver, DenyAll, SandboxBackend
 
 
 # ---------------------------------------------------------------- window
@@ -240,6 +241,21 @@ class Platform(ABC):
     def config_dir(self) -> str:
         """Folder for settings.json."""
         return os.path.join(os.path.expanduser('~'), '.robo')
+
+    # ------------------------------------------------------------ tasks
+    # Tasks only run when the platform provides a sandbox (see
+    # robo/sandbox/backend.py for the rules it must follow).
+    def sandbox(self) -> Optional[SandboxBackend]:
+        """The sandbox tasks run in, or None (then Robo refuses tasks)."""
+        return None
+
+    def approver(self) -> Approver:
+        """Asks you before a task gets permissions or changes your files."""
+        return DenyAll()
+
+    def task_dir(self) -> str:
+        """Folder for task workspaces."""
+        return os.path.join(os.path.expanduser('~'), '.robo', 'tasks')
 
     # ------------------------------------------------------------ settings window
     # A platform with a settings window returns True and implements

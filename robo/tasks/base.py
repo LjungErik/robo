@@ -4,6 +4,7 @@
                            │  ▲                 │
                            │  └────resume()─────┘
                            ├──► DONE       (is_done() said so)
+                           ├──► FAILED     (fail(), e.g. the worker crashed)
                            └──► ABORTED    (abort(), from any unfinished state)
 
 A Task never touches the robot. The TaskManager drives it and the
@@ -17,8 +18,9 @@ import itertools
 from abc import ABC, abstractmethod
 from typing import Optional
 
-PENDING, RUNNING, PAUSED, DONE, ABORTED = 'pending', 'running', 'paused', 'done', 'aborted'
-FINISHED_STATES = (DONE, ABORTED)
+PENDING, RUNNING, PAUSED, DONE, ABORTED, FAILED = (
+    'pending', 'running', 'paused', 'done', 'aborted', 'failed')
+FINISHED_STATES = (DONE, ABORTED, FAILED)
 
 _ids = itertools.count(1)
 
@@ -31,6 +33,8 @@ class Task(ABC):
         self.title = title
         self.state = PENDING
         self.result: Optional[str] = None   # short summary for Robo to tell you when done
+        self.error: Optional[str] = None    # why it failed
+        self.permissions = None             # robo.sandbox.Permissions it needs, if any
         self._worked = 0.0          # seconds spent RUNNING before the current stretch
         self._since = None          # when the current RUNNING stretch began
 
@@ -72,6 +76,14 @@ class Task(ABC):
             self.state, self._since = ABORTED, None
             self.on_abort(now)
 
+    def fail(self, now, reason):
+        """Give up: something went wrong (subclasses call this)."""
+        if not self.finished:
+            if self.state == RUNNING:
+                self._worked += now - self._since
+            self.state, self._since, self.error = FAILED, None, reason
+            self.on_fail(now)
+
     def poll(self, now):
         """Returns True the moment the task completes."""
         if self.state == RUNNING and self.is_done(now):
@@ -91,6 +103,7 @@ class Task(ABC):
     def on_resume(self, now): pass
     def on_abort(self, now): pass
     def on_done(self, now): pass
+    def on_fail(self, now): pass
 
     def __repr__(self):
         return f'<{type(self).__name__} #{self.id} {self.title!r} {self.state}>'

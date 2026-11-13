@@ -1,20 +1,26 @@
 """The tasks Robo knows how to do.
 
-For now there is only a placeholder that pretends to work for 1-2 minutes.
-To add a real task: subclass robo.tasks.Task, register a factory in
-TASK_KINDS, and teach the brain a phrase that replies with
-action='start_task', action_arg='<kind>'.
+Every real task runs in the sandbox (robo.tasks.sandboxed.SandboxedTask):
+its code is a job in robo/sandbox/worker/jobs.py, and here is where you
+say what it is called and which Permissions it needs. For now there is
+only a placeholder that pretends to work for 1-2 minutes.
+
+To add a task:
+  1. write the job in robo/sandbox/worker/jobs.py (it runs inside the sandbox),
+  2. add a factory here, with the Permissions it needs (default: none),
+  3. teach the brain a phrase that replies action='start_task', action_arg='<kind>'.
 """
 from .base import Task
+from .sandboxed import SandboxedTask, TaskEnvironment  # noqa: F401
 
 PLACEHOLDER_SECONDS = (60.0, 120.0)
 
 
-class PlaceholderTask(Task):
-    """Pretends to work for a while. Stands in for real tasks."""
-    kind = 'placeholder'
+class TimerTask(Task):
+    """In-process stand-in that just waits. Used by tests; runs no code."""
+    kind = 'timer'
 
-    def __init__(self, seconds, title='a top secret task'):
+    def __init__(self, seconds, title='a timer'):
         super().__init__(title)
         self.seconds = seconds
 
@@ -24,16 +30,19 @@ class PlaceholderTask(Task):
     def progress(self, now):
         return min(1.0, self.worked_seconds(now) / self.seconds)
 
-    def on_done(self, now):
-        self.result = 'All done! I hacked the mainframe. Well, pretended to.'
+
+def _placeholder(rng, env, args):
+    seconds = args.get('seconds') or rng.uniform(*PLACEHOLDER_SECONDS)
+    return SandboxedTask('placeholder', 'a top secret task', env, args={'seconds': seconds})
 
 
-# kind -> factory(rng) -> Task
+# kind -> factory(rng, env: TaskEnvironment, args: dict) -> Task
 TASK_KINDS = {
-    'placeholder': lambda rng: PlaceholderTask(rng.uniform(*PLACEHOLDER_SECONDS)),
+    'placeholder': _placeholder,
 }
 DEFAULT_KIND = 'placeholder'
 
 
-def make_task(kind, rng):
-    return TASK_KINDS.get(kind or DEFAULT_KIND, TASK_KINDS[DEFAULT_KIND])(rng)
+def make_task(kind, rng, env, args=None):
+    factory = TASK_KINDS.get(kind or DEFAULT_KIND, TASK_KINDS[DEFAULT_KIND])
+    return factory(rng, env, args or {})

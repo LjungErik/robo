@@ -12,6 +12,8 @@ Pieces, each replaceable on its own:
     settings_window.py the themed settings window          -> open_settings()
     voice.py          espeak-ng + robot filter + pw-play     -> SpeechOutput
     listen.py         Vosk helper process (stt_worker.py)    -> SpeechInput
+    sandbox.py        bubblewrap + systemd-run limits        -> SandboxBackend
+    approval.py       "may this task...?" dialogs            -> Approver
 """
 import os
 
@@ -70,6 +72,20 @@ class LinuxPlatform(Platform):
                 continue
             return pct, status in ('Charging', 'Full', 'Not charging')
         return None
+
+    def sandbox(self):
+        if getattr(self, '_sandbox', None) is None:
+            from .sandbox import BubblewrapBackend
+            self._sandbox = BubblewrapBackend()
+        return self._sandbox
+
+    def approver(self):
+        from .approval import GtkApprover
+        return GtkApprover()
+
+    def task_dir(self):
+        from .paths import data_dir
+        return os.path.join(data_dir(), 'tasks')
 
     def config_dir(self):
         base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')

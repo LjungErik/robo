@@ -9,13 +9,13 @@
 * Anything may interrupt the work by adding a pause reason; work resumes
   once every reason is gone. Time spent paused doesn't count.
 * Everything that happens is recorded as an event (`'started'`, `'paused'`,
-  `'resumed'`, `'finished'`, `'aborted'`) and handed out by update(), so the
+  `'resumed'`, `'finished'`, `'failed'`, `'aborted'`) and handed out by update(), so the
   robot can react to it in one place.
 """
-from .base import PAUSED, RUNNING
+from .base import DONE, RUNNING
 
-STARTED, PAUSED_EV, RESUMED, FINISHED, ABORTED_EV = (
-    'started', 'paused', 'resumed', 'finished', 'aborted')
+STARTED, PAUSED_EV, RESUMED, FINISHED, FAILED_EV, ABORTED_EV = (
+    'started', 'paused', 'resumed', 'finished', 'failed', 'aborted')
 
 
 class TaskManager:
@@ -94,9 +94,10 @@ class TaskManager:
     def update(self, now):
         """Poll the running tasks. Returns the events since the last call."""
         for t in list(self.running):
-            if t.poll(now):
+            t.poll(now)
+            if t.finished:                   # done, or failed (even while starting)
                 self.running.remove(t)
-                self._events.append((FINISHED, t))
+                self._events.append((FINISHED if t.state == DONE else FAILED_EV, t))
         self._fill_slots(now)
         events, self._events = self._events, []
         return events

@@ -14,7 +14,7 @@ import time
 from robo.events import KINDS, Event
 from robo.platform.base import MenuItem, PointerEvent, WindowHost
 from robo.render.scene import draw_frame
-from robo.tasks import TaskManager, make_task
+from robo.tasks import TaskEnvironment, TaskManager, make_task
 
 from . import layout, personality
 from .body import Body
@@ -51,6 +51,7 @@ class Companion:
                                  allowed=settings.characters)
         self.effects = Effects(self.rng)
         self.tasks = TaskManager()
+        self.task_env = TaskEnvironment()       # no sandbox = no tasks (set by the app)
         self.hacker = HackerMode()
         self.conversation = Conversation(self)
         self.body = None            # created in attach(), once we know the screen
@@ -188,14 +189,56 @@ class Companion:
         """Has a task (or is still in his hacker outfit)."""
         return self.tasks.busy or self.hacker.active
 
-    def start_task(self, kind=None):
-        """Give him a task. Returns 'started' or 'queued'."""
+    def start_task(self, kind=None, args=None):
+        """Give him a task. Returns 'started', 'queued', 'asking' (waiting for you
+        to approve its permissions) or 'unavailable' (it can't run safely here)."""
         now = self.clock()
-        task = make_task(kind, self.rng)
+        problem = self.task_env.unavailable_reason()
+        if problem:
+            log.warning("can't do tasks: %s", problem)
+            personality.on_task_refused(self, now)
+            return 'unavailable'
+        task = make_task(kind, self.rng, self.task_env, args)
+        perms = task.permissions
+        if perms is not None and perms.needs_approval:
+            log.info('task %s asks for: %s', task.id, perms.describe())
+
+            def answered(ok):
+                if ok:
+                    self._submit(task)
+                else:
+                    log.info('task %s: permissions denied', task.id)
+                    personality.on_task_refused(self, self.clock())
+            self.task_env.approver.ask_permissions(task.title, perms.describe(), answered)
+            return 'asking'
+        return self._submit(task)
+
+    def _submit(self, task):
+        now = self.clock()
         result = self.tasks.submit(task, now)
         log.info('task %s: %s (%s)', task.id, task.title, result)
         personality.on_task_given(self, now)
         return result
+
+    def review_changes(self, task):
+        """The task changed copies of your files: ask before applying them."""
+        changes = getattr(task, 'changes', None)
+        if not changes:
+            return
+
+        def answered(ok):
+            if not ok:
+                log.info('task %s: changes thrown away', task.id)
+                return
+            applied, skipped = changes.apply()
+            log.info('task %s: applied %d changes', task.id, len(applied))
+            for change, reason in skipped:
+                log.warning('  skipped %s: %s', change.original_path, reason)
+        self.task_env.approver.review_changes(task.title, changes.describe(), answered)
+
+    def shutdown(self):
+        """The app is closing: stop every task (kills their sandboxes)."""
+        self.tasks.abort_all(self.clock())
 
     def abort_task(self, everything=False):
         """Abandon the current task (or all of them). Returns the aborted tasks."""

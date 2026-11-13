@@ -33,6 +33,7 @@ class Context:
     task: Optional[str] = None                    # title of the task he's working on
     task_progress: Optional[float] = None         # 0..1 if known
     tasks_waiting: int = 0                        # tasks queued up after the current one
+    tasks_unavailable: Optional[str] = None       # why he can't do tasks safely here
 
 
 class Brain(ABC):

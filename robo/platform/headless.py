@@ -13,6 +13,7 @@ import cairo
 from robo.core.geometry import Rect
 from robo.platform.base import (IdleMonitor, Platform, Scheduler, SpeechInput, SpeechOutput,
                                 Utterance, WindowHost)
+from robo.sandbox import Approver, SandboxBackend, SandboxProcess
 
 
 class ManualScheduler(Scheduler):
@@ -172,6 +173,89 @@ class FakeEars(SpeechInput):
             self.on_wake()
 
 
+class FakeSandbox(SandboxBackend):
+    """Pretends to run jobs, on the manual clock. Runs no code at all, so it's
+    safe; the real sandboxes are tested in tests/test_sandbox.py."""
+    name = 'fake'
+
+    def __init__(self, clock):
+        self.clock = clock
+        self.problem = None
+        self.launched = []
+
+    def check(self):
+        return self.problem
+
+    def launch(self, spec):
+        proc = FakeSandboxProcess(self.clock)
+        self.launched.append((spec, proc))
+        return proc
+
+
+class FakeSandboxProcess(SandboxProcess):
+    """Understands the 'placeholder' job: works for args['seconds']."""
+
+    def __init__(self, clock):
+        self.clock = clock
+        self.seconds = None
+        self.worked = 0.0
+        self.paused = False
+        self.killed = False
+        self._last = clock()
+        self._outbox = []
+        self._done = False
+
+    def send(self, message):
+        if message.get('type') == 'start':
+            if message.get('job') == 'placeholder':
+                self.seconds = float(message['args'].get('seconds', 1))
+            else:
+                self._outbox.append({'type': 'error', 'message': 'unknown job'})
+
+    def receive(self):
+        now = self.clock()
+        if not (self.paused or self.killed or self._done) and self.seconds:
+            self.worked += now - self._last
+            if self.worked >= self.seconds:
+                self._done = True
+                self._outbox.append({'type': 'done', 'result': 'pretend result'})
+            else:
+                self._outbox.append({'type': 'progress', 'value': self.worked / self.seconds})
+        self._last = now
+        out, self._outbox = self._outbox, []
+        return out
+
+    def pause(self):
+        self.receive()
+        self.paused = True
+
+    def resume(self):
+        self._last = self.clock()
+        self.paused = False
+
+    def kill(self):
+        self.killed = True
+
+    def exit_code(self):
+        return -9 if self.killed else (0 if self._done else None)
+
+
+class FakeApprover(Approver):
+    """Answers `answer` (default yes) and records what it was asked."""
+
+    def __init__(self):
+        self.answer = True
+        self.asked = []
+
+    def ask_permissions(self, title, lines, on_answer):
+        self.asked.append(('permissions', title, lines))
+        on_answer(self.answer)
+
+    def review_changes(self, title, lines, on_answer):
+        self.asked.append(('changes', title, lines))
+        on_answer(self.answer)
+
+
 class HeadlessPlatform(Platform):
     name = 'headless'
 
@@ -184,6 +268,9 @@ class HeadlessPlatform(Platform):
         self.voice = FakeVoice(self.scheduler)
         self.ears = FakeEars()
         self.battery = (76, False)
+        self.fake_sandbox = FakeSandbox(self.clock)
+        self.fake_approver = FakeApprover()
+        self.tmp_task_dir = None
 
     def clock(self):
         return self.scheduler.now
@@ -209,6 +296,21 @@ class HeadlessPlatform(Platform):
 
     def battery_percent(self):
         return self.battery
+
+    def sandbox(self):
+        return self.fake_sandbox
+
+    def approver(self):
+        return self.fake_approver
+
+    def task_dir(self):
+        if self.tmp_task_dir is None:
+            import atexit
+            import shutil
+            import tempfile
+            self.tmp_task_dir = tempfile.mkdtemp(prefix='robo-tasks-')
+            atexit.register(shutil.rmtree, self.tmp_task_dir, True)
+        return self.tmp_task_dir
 
     @property
     def has_settings_window(self):

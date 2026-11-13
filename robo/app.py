@@ -12,7 +12,9 @@ from robo.config import Settings
 from robo.conversation import RuleBrain
 from robo.core.companion import Companion
 from robo.platform import load_platform
+from robo.sandbox import Workspace
 from robo.settings_store import SettingsStore
+from robo.tasks import TaskEnvironment
 
 TICKS_PER_SECOND = 30
 DEMO_DELAY = 1.2
@@ -75,6 +77,12 @@ class RoboApp:
         self.sources = platform.event_sources(settings)
         for source in self.sources:
             source.start(self.robot.handle_event)
+
+        # Tasks run in the platform's sandbox, and ask you via its approver.
+        self.robot.task_env = TaskEnvironment(sandbox=platform.sandbox(),
+                                              approver=platform.approver(),
+                                              workspace_root=platform.task_dir())
+        Workspace.prune(platform.task_dir())
 
         # Conversation: swap RuleBrain for an LLM-backed Brain here later.
         self.robot.conversation.battery = platform.battery_percent
@@ -140,6 +148,7 @@ def main(argv=None):
         platform.scheduler.run()
     finally:
         app.robot.conversation.shutdown()   # close the microphone helper
+        app.robot.shutdown()                # stop every task sandbox
     return 0
 
 

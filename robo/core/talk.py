@@ -112,7 +112,8 @@ class Conversation:
                        turn=self.turn,
                        task=task.title if task else None,
                        task_progress=task.progress(now) if task else None,
-                       tasks_waiting=len(r.tasks.queued))
+                       tasks_waiting=len(r.tasks.queued),
+                       tasks_unavailable=r.task_env.unavailable_reason())
 
     # ------------------------------------------------------------ control
     def start(self):

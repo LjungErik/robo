@@ -505,8 +505,8 @@ class VoiceStyleTest(unittest.TestCase):
 
 class TaskManagerTest(unittest.TestCase):
     def setUp(self):
-        from robo.tasks import PlaceholderTask, TaskManager
-        self.Task = PlaceholderTask
+        from robo.tasks import TimerTask, TaskManager
+        self.Task = TimerTask
         self.m = TaskManager()
 
     def test_runs_one_and_queues_the_rest(self):
@@ -643,3 +643,59 @@ class HackerTaskTest(unittest.TestCase):
         ls = labels()
         self.assertTrue(any('Abort task' in l for l in ls))
         self.assertFalse(any('Dress up' in l for l in ls))
+
+
+class TaskSafetyTest(unittest.TestCase):
+    def setUp(self):
+        self.robot, self.p = make_robot(dress_up_every=0, evil_after=0)
+
+    def test_no_sandbox_means_no_tasks(self):
+        self.p.fake_sandbox.problem = 'bubblewrap is not installed'
+        self.assertEqual(self.robot.start_task(), 'unavailable')
+        self.assertFalse(self.robot.tasks.busy)
+        from robo.conversation import RuleBrain
+        reply = RuleBrain(random.Random(1)).respond('do a task',
+                                                    self.robot.conversation.context())
+        self.assertIsNone(reply.action)
+        self.assertIn('bubblewrap', reply.text)
+
+    def test_default_environment_refuses(self):
+        from robo.core.companion import Companion
+        self.assertIsNotNone(Companion(Settings()).task_env.unavailable_reason())
+
+    def _register(self, permissions):
+        from robo.tasks import SandboxedTask, catalog
+        catalog.TASK_KINDS['needy'] = lambda rng, env, args: SandboxedTask(
+            'placeholder', 'needy task', env, args={'seconds': 2}, permissions=permissions)
+        self.addCleanup(catalog.TASK_KINDS.pop, 'needy')
+
+    def test_permissions_are_asked_first(self):
+        from robo.sandbox import Permissions
+        self._register(Permissions(hosts=('example.com',)))
+        self.p.fake_approver.answer = False
+        self.assertEqual(self.robot.start_task('needy'), 'asking')
+        self.assertEqual(self.p.fake_approver.asked[-1][0], 'permissions')
+        self.assertIn('Download from: example.com', self.p.fake_approver.asked[-1][2])
+        self.assertFalse(self.robot.tasks.busy)                 # you said no
+        self.p.fake_approver.answer = True
+        self.robot.start_task('needy')
+        self.assertTrue(self.robot.tasks.busy)
+
+    def test_failed_task_shows_a_warning(self):
+        from robo.tasks import SandboxedTask
+        task = SandboxedTask('nonsense', 'broken', self.robot.task_env)
+        self.robot._submit(task)
+        self.p.scheduler.advance(1)
+        self.assertEqual(task.state, 'failed')
+        self.assertFalse(self.robot.tasks.busy)
+        kinds = [b.kind for b in self.robot.bubbles.pending] + \
+            [self.robot.bubbles.current.kind if self.robot.bubbles.current else None]
+        self.assertIn('warning', kinds)
+
+    def test_quitting_stops_tasks(self):
+        self.robot.start_task()
+        self.p.scheduler.advance(1)
+        proc = self.p.fake_sandbox.launched[-1][1]
+        self.robot.shutdown()
+        self.assertTrue(proc.killed)
+        self.assertFalse(self.robot.tasks.busy)

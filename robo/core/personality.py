@@ -244,8 +244,19 @@ def on_task_event(robot, event, task, now):
         face.show(F.ARMS_UP, now, 1.6)
         face.show(F.HAPPY, now, 2.0)
         face.add_hearts(now, (0.2, 0.5))
+        robot.review_changes(task)
+    elif event == 'failed':
+        robot.bubbles.push('warning', now, duration=5.0, dedup=False)
+        face.show(F.SWEAT, now, 2.5)
+        face.show(F.SURPRISED, now, 0.6)
     elif event == 'aborted':
         face.show(F.SURPRISED, now, 0.5)
+
+
+def on_task_refused(robot, now):
+    """He can't (or may not) do the task: no sandbox, or you said no."""
+    robot.bubbles.push('warning', now, duration=4.0, dedup=False)
+    robot.face.show(F.SWEAT, now, 2.0)
 
 
 def on_hacker_dressed(robot, now):

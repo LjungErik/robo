@@ -165,6 +165,9 @@ class RuleBrain(Brain):
 
     # ------------------------------------------------------------ tasks
     def do_task(self, text, ctx):
+        if ctx.tasks_unavailable:
+            return Reply("Sorry, I can't do tasks safely on this computer: "
+                         f'{ctx.tasks_unavailable}.', 'sad')
         if ctx.task:
             return Reply("I'm still busy with my current task, so I'll queue that one up next!",
                          'happy', action='start_task', end=True)

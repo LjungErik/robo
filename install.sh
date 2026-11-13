@@ -19,6 +19,7 @@ missing=()
 python3 -c 'import gi; gi.require_version("Gtk","3.0"); from gi.repository import Gtk' 2>/dev/null \
   || missing+=(python3-gi gir1.2-gtk-3.0)
 python3 -c 'import gi; gi.require_foreign("cairo")' 2>/dev/null || missing+=(python3-gi-cairo)
+command -v bwrap >/dev/null || missing+=(bubblewrap)        # the sandbox tasks run in
 if [ $WITH_VOICE = 1 ]; then
   python3 -c 'import ctypes.util, sys; sys.exit(not ctypes.util.find_library("espeak-ng"))' \
     || missing+=(libespeak-ng1)
