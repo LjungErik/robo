@@ -88,8 +88,10 @@ character (`--look ironman` for one run). Some characters don't just walk:
 - **Iron Man** takes off now and then, flies to a random spot anywhere on your
   screen, hovers there, maybe flies on, and lands. Let go of him in mid-air and
   he just hovers.
-- **Spider-Man** zips up a web line to the top of the screen, hangs there with his
-  legs dangling, then lets go and drops back down.
+- **Spider-Man** shoots a web line up to the top of the screen; where it sticks a
+  web spins itself out, spokes first and then the spiral, like a real spider's. He
+  zips up the line, hangs there swinging with his legs dangling, then lets go and
+  drops, or lowers himself back down on the thread.
 - **Thanos** snaps his fingers, vanishes in a puff of smoke and reappears
   somewhere else.
 

@@ -1,6 +1,8 @@
 # Spider-Man: red and blue suit, web pattern, big white eyes. Thwips webs and,
-# now and then, zips up a web line to the very top of the screen and hangs
-# there for a while, legs dangling, before letting go and dropping back down.
+# now and then, shoots a web line up to the top of the screen. Where it sticks
+# a real orb web spins itself out (spokes first, then the spiral), he zips up
+# the line, hangs there swinging with his legs dangling, and then either lets
+# go and drops, or lowers himself down on the thread like a real spider.
 id: spiderman
 name: Spider-Man
 order: 210
@@ -12,10 +14,17 @@ walk: {speed: 1.4, lift: "abs(sin(phase * 0.5)) * 3"}       # springy steps
 travel:
   - kind: hang
     chance: 0.35
-    speed: 340             # thwip... zoom!
-    gesture: hang
-    hover_gesture: hang
+    gesture: web_shoot     # 1. arm up, web line flies to the top of the screen...
+    shoot: 0.45            #    ...in this many seconds (layers.tether draws the line)
+    pause: 0.3             # 2. it sticks: the web spreads out (layers.anchor)
+    speed: 700             # 3. zip up the line (design px / s)
+    rope: 175              #    ...until his hand is this far below the web
+    hover_gesture: hang    # 4. hang there, swinging on it
+    swing: 0.28
     stay: [4, 9]
+    end: either            # 5. let go and drop, or lower himself down (sometimes each)
+    climb_gesture: hang
+    lower_speed: 110
 
 recolor:
   body: "#D7263D"          # red suit
@@ -33,7 +42,8 @@ palette:
 
 gestures:
   thwip: {back: 0.4, front: "-1.45 + (0.25 if t % 0.8 < 0.1 else 0)"}   # wrist flick
-  hang: {back: "0.3 + sin(t * 2) * 0.12", front: -2.0}                   # one hand up on the line
+  web_shoot: {back: 0.35, front: "-2.75 + (0.15 if t % 0.5 < 0.06 else 0)", place: over_head}
+  hang: {back: "0.45 + sin(t * 2) * 0.15", front: -2.85, place: over_head}   # hand up on the line
 
 particles:
   web:                     # little web splats flying forward
@@ -103,11 +113,63 @@ layers:
       vars: {y0: "-44.5 + i * 1.6"}
       line: [["side * 1.5", y0], ["side * 5", "y0 - 2.5 + i * 1.3"], ["side * 7.5", "y0 - 1 + i * 2.4"]]
       lw: 1
+  # ---- the web line to the top of the screen. Variables: hand_x, hand_y (his hand),
+  # anchor_x, anchor_y (where it sticks), web (0..1: how far it has flown),
+  # web_hit (s since it stuck, -1 before), web_gone (s since he let go, -1 while holding)
+  tether:
+    - if: web_gone < 0                                   # flying up / holding on
+      vars:
+        tx: "lerp(hand_x, anchor_x, web)"
+        ty: "lerp(hand_y, anchor_y, web)"
+      group:
+        - {line: [[hand_x, hand_y], [tx, ty]], rope: [thread, 1.5, 3.0]}
+        - if: web < 1                                    # the sticky blob at the tip
+          circle: [tx, ty, 3]
+          fill: thread
+          lw: 1.4
+    - if: web_gone >= 0 and web_gone < 0.5               # let go: the loose end springs up
+      vars: {k: "web_gone / 0.5"}
+      alpha: "1 - k"
+      group:
+        - line: [[anchor_x, anchor_y], [anchor_x, "anchor_y + 140 * (1 - k)"]]
+          rope: [thread, 1.3, 2.6]
+
+  # ---- an orb web where the line sticks, spun out like a real spider does it:
+  # the spokes (radii) first, then the capture spiral from the hub outwards,
+  # each strand sagging a little toward the hub between two spokes.
+  anchor:
+    - if: web_hit >= 0
+      translate: [anchor_x, anchor_y]
+      vars:
+        spokes: "smooth(web_hit / 0.3)"
+        spiral: "clamp((web_hit - 0.2) / 0.8) * 8"
+      alpha: "1 if web_gone < 2.5 else max(0, 1 - (web_gone - 2.5))"
+      group:
+        - {circle: [0, 0, "14 * (1 - smooth(web_hit / 0.25))"],      # the splat
+           fill: [thread, "0.6 * (1 - smooth(web_hit / 0.25))"], stroke: none}
+        - repeat: 16                                     # radii
+          vars:
+            a: "i * tau / 16 + 0.06 * sin(i * 7.3)"
+            len: "62 * (0.85 + 0.15 * sin(i * 3.1)) * spokes"
+          line: [[0, 0], ["cos(a) * len", "sin(a) * len"]]
+          rope: [thread, 1.0, 2.0]
+        - for: {ring: [0, 1, 2, 3, 4, 5, 6, 7]}          # capture spiral, inside out
+          group:
+            - if: spiral > ring
+              compound:                                  # one continuous thread per turn
+                - repeat: 16
+                  vars:
+                    a: "i * tau / 16 + 0.06 * sin(i * 7.3)"
+                    b: "(i + 1) * tau / 16 + 0.06 * sin((i + 1) * 7.3)"
+                    r: "(9 + ring * 6.5 + i * 0.4) * (0.85 + 0.15 * sin(i * 3.1))"
+                    r2: "(9 + ring * 6.5 + (i + 1) * 0.4) * (0.85 + 0.15 * sin((i + 1) * 3.1))"
+                    m: "(a + b) / 2"
+                    sag: "(r + r2) / 2 * 0.88"
+                  path: "M {cos(a)*r} {sin(a)*r} C {cos(m)*sag} {sin(m)*sag} {cos(m)*sag} {sin(m)*sag} {cos(b)*r2} {sin(b)*r2}"
+              rope: [thread, 0.9, 1.9]
+        - {circle: [0, 0, "3 * spokes"], fill: thread, lw: 1.2}    # the hub
+
   front_hand:
-    - if: "travel == 'hang' and airborne"               # the web line up to the top of the screen
-      rotate: -angle
-      line: [[0, 0], [0, -900]]
-      rope: [thread, 1.6, 3.2]
     - if: "arms == 'thwip' and t % 0.8 > 0.12"          # thwip!
       rotate: -angle
       line: [[0, 0], [170, -8]]

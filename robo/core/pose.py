@@ -41,6 +41,12 @@ class Pose:
     airborne: bool = False       # flying / hovering / hanging somewhere up the screen
     travel: str = ''             # '', 'fly', 'hang' or 'teleport' while getting around
     cruising: bool = False       # moving through the air right now (not just hovering)
+    # a web line (or any tether) up to the top of the screen, see robo.core.travel.Web
+    web: float = -1.0            # how far the line has flown, 0..1 (-1 = no web)
+    web_hit: float = -1.0        # seconds since it stuck (-1 = not yet)
+    web_gone: float = -1.0       # seconds since he let go (-1 = still holding it)
+    anchor: tuple = (0.0, 0.0)   # where it sticks, relative to his feet (design px, not mirrored)
+    swing: float = 0.0           # swinging on the line (radians, around the anchor)
     poof: Optional[float] = None  # costume-change smoke, 0..1 while it plays
     particles: list = field(default_factory=list)       # robo.core.effects.Particle
     talk: float = 0.0            # mouth opening while speaking (0..1)
@@ -169,7 +175,8 @@ def build_pose(robot, now):
 
     return Pose(
         t=t, facing=body.facing, walking=body.state == WALK, phase=body.phase,
-        dangling=body.held or body.state == HANG, lift=lift, squash=body.squash(now),
+        dangling=body.held or body.state == HANG or (body.cruising and body.air_kind == 'hang'),
+        lift=lift, squash=body.squash(now),
         mood=mood, openness=face.openness(now),
         look=face.look if mood == 'normal' else 0.0,
         arms=_arms(robot, now, looks_evil),
@@ -183,6 +190,7 @@ def build_pose(robot, now):
         costume=HACKER if hacker.dressed else (character.id if character else ''),
         skin=robot.look,
         airborne=airborne, travel=travel.kind, cruising=body.cruising,
+        **(travel.web_pose(robot, now) or {}),
         poof=_first(robot.wardrobe.poof(now), hacker.poof(now), travel.poof(now)),
         particles=robot.effects.particles,
         talk=robot.conversation.mouth(now),

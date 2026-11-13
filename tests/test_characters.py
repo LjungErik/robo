@@ -245,17 +245,70 @@ class TravelTest(unittest.TestCase):
         self.assertIn(round(b.ground_y), heights)                  # and back on the ground
         self.assertTrue(flames and all(flames))
 
-    def test_spider_man_hangs_from_the_top_and_drops_down(self):
+    def web_trip(self, end):
+        """Spider-Man shoots a web, zips up it, hangs, then comes down by `end`."""
+        import dataclasses
         robot, p = make_robot(look='spiderman')
-        seen = set()
+        run(p, 1)
+        a = dataclasses.replace(robot.travel.abilities(robot)[0], end=end)
+        start_y = robot.body.y
+        robot.travel.start(robot, a, p.clock())
+        seen = []
 
         def watch():
-            if robot.body.state == 'hang':
-                self.assertEqual(robot.body.y, robot.bounds.min_y)
-                self.assertTrue(build_pose(robot, p.clock()).dangling)
-            seen.add(robot.body.state)
-        run(p, 240, each=watch)
-        self.assertTrue({'hang', 'fall'} <= seen)
+            pose = build_pose(robot, p.clock())
+            seen.append((robot.body.state, pose.web, pose.web_hit, p.window.height,
+                         p.window.pos[1]))
+        run(p, 0.2, each=watch)
+        self.assertEqual(robot.body.state, 'idle')            # 1. still on the ground, shooting
+        self.assertTrue(0 < seen[-1][1] < 1)                  # the line is on its way up
+        self.assertEqual(p.window.pos[1], robot.bounds.min_y)  # window: a column to the top
+        self.assertGreater(p.window.height, 800)
+        run(p, 3, each=watch)
+        self.assertEqual(robot.body.state, 'hang')            # 3./4. zipped up, hanging
+        self.assertTrue(any(s[2] >= 0 for s in seen))         # 2. the web stuck up there
+        pose = build_pose(robot, p.clock())
+        self.assertEqual(pose.web, 1.0)
+        self.assertTrue(pose.dangling)
+        self.assertAlmostEqual(-pose.anchor[1], a.rope + 53, delta=3)   # hanging on the rope
+        self.assertLess(robot.body.y, start_y - 500)
+        robot.travel.maybe_start = lambda *a: False           # (no second trip in this test)
+        robot.travel.land(robot)                              # 5. come down
+        run(p, 15)
+        self.assertTrue(robot.body.on_ground)
+        self.assertIsNone(robot.travel.web)                   # the web faded away
+        self.assertEqual(p.window.height, robot.height)       # normal window again
+        self.assertEqual(p.window.pos[1], round(robot.bounds.ground_y))
+        return robot, p
+
+    def test_spider_man_web_and_drop(self):
+        self.web_trip('drop')
+
+    def test_spider_man_lowers_himself_down_the_thread(self):
+        self.web_trip('lower')
+
+    def test_spider_man_on_his_own(self):
+        robot, p = make_robot(look='spiderman')
+        seen = set()
+        run(p, 300, each=lambda: seen.add(robot.body.state))
+        self.assertIn('hang', seen)
+
+    def test_grabbing_him_cuts_the_web(self):
+        from robo.platform.base import PointerEvent
+        robot, p = make_robot(look='spiderman')
+        robot.travel.start_kind(robot, 'hang', p.clock())
+        run(p, 3)
+        self.assertEqual(robot.body.state, 'hang')
+        hx = robot.body.x
+        hy = robot.body.y + 200 * robot.scale          # his belly, in screen pixels
+        x, y = p.window.pos
+        robot.pointer_press(PointerEvent(1, hx - x, hy - y, hx, hy))
+        robot.pointer_motion(PointerEvent(1, hx - x, hy - y, hx + 30, hy + 40))
+        self.assertIsNone(robot.travel.web)
+        self.assertAlmostEqual(robot.body.y, hy + 40 - 200 * robot.scale, delta=2)
+        robot.pointer_release(PointerEvent(1, 0, 0, hx + 30, hy + 40))
+        run(p, 3)
+        self.assertTrue(robot.body.on_ground)
 
     def test_thanos_snaps_and_teleports(self):
         robot, p = make_robot(look='thanos')

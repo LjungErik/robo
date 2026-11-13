@@ -28,12 +28,22 @@ def window_size(scale):
     return int(round(WINDOW_W * scale)), int(round(WINDOW_H * scale))
 
 
-def click_regions(scale, bubble_visible):
-    """Window-local rectangles (pixels) that should catch the mouse."""
-    rects = [ROBOT_HITBOX.scaled(scale)]
+def click_regions(scale, bubble_visible, offset=0.0):
+    """Window-local rectangles (pixels) that should catch the mouse. `offset`
+    (design px) is how far down a tall window the robot is drawn."""
+    rects = [_moved(ROBOT_HITBOX, offset).scaled(scale)]
     if bubble_visible:
-        rects.append(BUBBLE_HITBOX.scaled(scale))
+        rects.append(_moved(BUBBLE_HITBOX, bubble_offset(offset)).scaled(scale))
     return rects
+
+
+def bubble_offset(offset):
+    """The bubble follows the robot down a tall window, but never off its top."""
+    return max(offset, -BUBBLE.y + 1)
+
+
+def _moved(r, dy):
+    return Rect(r.x, r.y + dy, r.w, r.h)
 
 
 def walk_bounds(workarea, scale):

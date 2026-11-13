@@ -128,10 +128,13 @@ class Body:
             self.rest(now, lo, hi)
 
     # ------------------------------------------------------------ in the air
-    def fly_to(self, x, y, speed, bounds, kind='fly', stay=(3.0, 6.0), landing=False):
-        """Fly (in a straight line) to a point anywhere on the screen."""
+    def fly_to(self, x, y, speed, bounds, kind='fly', stay=(3.0, 6.0), landing=False,
+               above_top=0.0):
+        """Fly (in a straight line) to a point anywhere on the screen. `above_top`
+        (px) lets his window top go above the screen top (hanging from a web, his
+        window is a tall column then, see robo.core.travel)."""
         self.target_x = bounds.clamp_x(x)
-        self.target_y = bounds.clamp_y(y)
+        self.target_y = min(max(y, bounds.min_y - above_top), bounds.ground_y)
         self.air_speed, self.air_kind, self.air_stay = speed, kind, stay
         self.landing = landing
         self.state = FLY
@@ -237,11 +240,9 @@ class Body:
 
     def settle(self, now, bounds):
         """Called when the screen layout may have changed."""
-        if self.airborne:
+        if self.airborne and self.air_kind != 'hang':      # a hanging web keeps its length
             self.x = bounds.clamp_x(self.x)
             self.y = bounds.clamp_y(self.y)
-            if self.state == HANG:
-                self.y = bounds.min_y          # still hanging from the top edge
         if self.on_ground:
             self.y = bounds.ground_y
             if not bounds.contains_x(self.x) and self.state != WALK:

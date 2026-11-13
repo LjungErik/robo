@@ -30,7 +30,7 @@ PARTS = ('shadow', 'legs', 'arm', 'hand', 'torso', 'head_back', 'head', 'face', 
          'antenna')
 # Outfit layers a costume can add (same order idea; see the README).
 SLOTS = ('behind', 'body', 'behind_head', 'face', 'head', 'front', 'ground',
-         'front_hand', 'back_hand')
+         'front_hand', 'back_hand', 'anchor', 'tether')
 GESTURE_PLACES = ('behind', 'front', 'over_head')
 RIG_KEYS = ('shoulder', 'arm_length', 'neck', 'sit_drop', 'head_top', 'antenna_y')
 TOP_KEYS = {'id', 'name', 'role', 'base', 'order', 'words', 'demand', 'move', 'walk', 'travel',
@@ -232,7 +232,8 @@ def _travel(spec, where):
     _need(isinstance(spec, dict) and spec.get('kind') in TRAVEL_KINDS,
           f'{where}: kind must be one of {", ".join(TRAVEL_KINDS)}')
     kw = {}
-    for k in ('chance', 'speed', 'tilt', 'height', 'windup'):
+    for k in ('chance', 'speed', 'tilt', 'height', 'windup', 'shoot', 'pause', 'anchor_dx',
+              'rope', 'swing', 'lower_speed'):
         if k in spec:
             kw[k] = _num(spec[k], f'{where}.{k}')
     if 'stay' in spec:
@@ -240,9 +241,12 @@ def _travel(spec, where):
     if 'hops' in spec:
         lo, hi = _pair(spec['hops'], f'{where}.hops')
         kw['hops'] = (int(lo), int(hi))
-    for k in ('gesture', 'hover_gesture', 'mood', 'particles'):
+    for k in ('gesture', 'hover_gesture', 'mood', 'particles', 'climb_gesture'):
         if k in spec:
             kw[k] = str(spec[k])
+    if 'end' in spec:
+        _need(spec['end'] in ('drop', 'lower', 'either'), f'{where}.end: drop, lower or either')
+        kw['end'] = spec['end']
     return Travel(kind=spec['kind'], **kw)
 
 

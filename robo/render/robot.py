@@ -10,6 +10,9 @@ y grows downward (so the robot lives at negative y), +x is the way he faces.
 
 Paint order (parts come from the base design, layers from outfits):
 
+    layer anchor                        where a web line sticks (top of the screen)
+    layer tether                        the web line itself, hand to anchor
+                                        (both: not mirrored; the robot swings around the anchor)
     part shadow                         (on the ground, not lifted)
     layer behind                        capes, tails, jet flames
     part legs
@@ -64,6 +67,8 @@ def pose_env(p, design):
         'hanging': p.travel == 'hang' and p.airborne,
         'flying': p.travel == 'fly' and p.airborne,
         'head_top': design.head_top, 'antenna_y': design.antenna_y,
+        'web': p.web, 'web_hit': p.web_hit, 'web_gone': p.web_gone,
+        'anchor_x': p.anchor[0], 'anchor_y': p.anchor[1], 'swing': p.swing,
         '_palette': palette,
     }
 
@@ -93,14 +98,6 @@ def draw_robot(cr, p, design=None):
     cr.set_line_cap(cairo.LINE_CAP_ROUND)
     cr.set_line_join(cairo.LINE_JOIN_ROUND)
 
-    if p.shadow:
-        part('shadow')
-
-    cr.translate(0, -p.lift)
-    sq = p.squash
-    cr.scale(1 + sq, 1 - sq)
-    cr.scale(p.facing, 1)
-
     # ---- legs and bob
     if p.walking:
         leg_a = max(0.0, math.sin(phase)) * 5
@@ -118,6 +115,35 @@ def draw_robot(cr, p, design=None):
     bob *= 1 - sit
     env.update(leg_a=leg_a, leg_b=leg_b, bob=bob, drop=drop, sit_k=sit)
 
+    gesture = (d.gestures.get(p.arms) or REGISTRY.gesture(p.arms) or d.gestures.get('rest')
+               or REGISTRY.gesture('rest'))
+    if gesture is not None:
+        a_back, a_front = gesture.back(env), gesture.front(env)
+        place = gesture.place
+    else:
+        a_back, a_front, place = 0.2, -0.2, 'behind'
+
+    # ---- a web line to the top of the screen (not mirrored, he swings around its anchor)
+    if p.web >= 0:
+        sq = p.squash
+        hx = p.facing * (sx - arm_len * math.sin(a_front)) * (1 + sq)
+        hy = (sy + arm_len * math.cos(a_front) - bob + drop) * (1 - sq) - p.lift
+        env.update(hand_x=hx, hand_y=hy)
+        slot('anchor')
+        ax, ay = p.anchor
+        cr.translate(ax, ay)
+        cr.rotate(p.swing)
+        cr.translate(-ax, -ay)
+        slot('tether')
+
+    if p.shadow:
+        part('shadow')
+
+    cr.translate(0, -p.lift)
+    sq = p.squash
+    cr.scale(1 + sq, 1 - sq)
+    cr.scale(p.facing, 1)
+
     if d.slots.get('behind'):
         cr.save()
         cr.translate(0, -bob + drop)
@@ -130,14 +156,6 @@ def draw_robot(cr, p, design=None):
     cr.translate(0, -bob + drop)
 
     # ---- arms
-    gesture = (d.gestures.get(p.arms) or REGISTRY.gesture(p.arms) or d.gestures.get('rest')
-               or REGISTRY.gesture('rest'))
-    if gesture is not None:
-        a_back, a_front = gesture.back(env), gesture.front(env)
-        place = gesture.place
-    else:
-        a_back, a_front, place = 0.2, -0.2, 'behind'
-
     def arm(side, angle, hand_slot):
         e = dict(env, side=side, angle=angle)
         cr.save()

@@ -91,6 +91,7 @@ class Companion:
             self.scale = settings.scale
             self.width, self.height = layout.window_size(self.scale)
             self.host.resize(self.width, self.height)
+            self._last_height = self.height
             self.body.scale = self.scale
             self.bounds = layout.walk_bounds(self.host.workarea(), self.scale)
             self.body.x = self.bounds.clamp_x(self.body.x)
@@ -295,28 +296,46 @@ class Companion:
         if self.hacker.typing:
             self.effects.emit('binary', now, dt, self.body.facing)
 
+    def _window_rect(self):
+        """(x, y, height, offset): where his window goes. Normally it's just around
+        him; while a web is out it's a tall column from the top of the screen down
+        to the ground, and he's drawn `offset` design px down it."""
+        x = int(round(self.body.x - self.width / 2))
+        if not self.travel.tall:
+            return x, int(round(self.body.y)), self.height, 0.0
+        top = int(self.bounds.min_y)
+        height = self.height + int(round(self.bounds.ground_y - top))
+        return x, top, height, (self.body.y - top) / self.scale
+
     def _sync_window(self):
-        pos = (int(round(self.body.x - self.width / 2)), int(round(self.body.y)))
-        if pos != self._last_pos:
-            self._last_pos = pos
-            self.host.move(*pos)
+        x, y, height, offset = self._window_rect()
+        if height != getattr(self, '_last_height', self.height):
+            self._last_height = height
+            self.host.resize(self.width, height)
+        if (x, y) != self._last_pos:
+            self._last_pos = (x, y)
+            self.host.move(x, y)
         visible = self.bubbles.visible
-        if visible != self._last_bubble_visible:
-            self._last_bubble_visible = visible
-            self.host.set_click_regions(layout.click_regions(self.scale, visible))
+        key = (visible, round(offset * self.scale))
+        if key != self._last_bubble_visible:
+            self._last_bubble_visible = key
+            self.host.set_click_regions(layout.click_regions(self.scale, visible, offset))
 
     # ------------------------------------------------------------ WindowListener
     def draw(self, cr):
         now = self.clock()
-        draw_frame(cr, self.scale, build_pose(self, now), self.bubbles.current, now)
+        offset = self._window_rect()[3]
+        draw_frame(cr, self.scale, build_pose(self, now), self.bubbles.current, now, offset)
 
     def pointer_press(self, ev: PointerEvent):
         if ev.button == 3:
             self.host.show_menu(self.menu_items())
         elif ev.button == 1:
-            wx, wy = self.host.position()
+            offset = self._window_rect()[3]
             in_bubble = self.bubbles.visible and layout.BUBBLE_HITBOX.contains(
-                ev.x / self.scale, ev.y / self.scale)
+                ev.x / self.scale, ev.y / self.scale - layout.bubble_offset(offset))
+            # grab him where he is (not where a tall web window starts)
+            wx, wy = self.body.x - self.width / 2, self.body.y
             self._press = dict(rx=ev.root_x, ry=ev.root_y,
                                ox=ev.root_x - wx, oy=ev.root_y - wy, in_bubble=in_bubble)
 
@@ -328,6 +347,7 @@ class Companion:
             if abs(ev.root_x - p['rx']) + abs(ev.root_y - p['ry']) < DRAG_THRESHOLD:
                 return
             self.body.grab(self.clock())
+            self.travel.cut_web(self.clock())         # picked up: the web is gone
         self.body.drag_to(ev.root_x - p['ox'] + self.width / 2, ev.root_y - p['oy'])
 
     def pointer_release(self, ev: PointerEvent):

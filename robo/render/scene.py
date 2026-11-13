@@ -13,8 +13,9 @@ from .shapes import INK, RED, WHITE, circle, paint, speech_path
 ICON_SCALE = 1.15
 
 
-def draw_frame(cr, scale, pose, bubble, now):
-    """cr: cairo context for the whole window; bubble may be None."""
+def draw_frame(cr, scale, pose, bubble, now, offset=0.0):
+    """cr: cairo context for the whole window; bubble may be None. `offset` (design
+    px) moves everything down: the window is a tall column while a web is out."""
     cr.save()
     cr.set_operator(cairo.OPERATOR_SOURCE)
     cr.set_source_rgba(0, 0, 0, 0)
@@ -23,7 +24,7 @@ def draw_frame(cr, scale, pose, bubble, now):
     cr.scale(scale, scale)
 
     cr.save()
-    cr.translate(layout.GROUND_X + pose.jitter, layout.GROUND_Y)
+    cr.translate(layout.GROUND_X + pose.jitter, layout.GROUND_Y + offset)
     draw_robot(cr, pose)
     if pose.zzz:
         draw_zzz(cr, pose.t, pose.facing)
@@ -33,7 +34,10 @@ def draw_frame(cr, scale, pose, bubble, now):
     cr.restore()
 
     if bubble is not None:
+        cr.save()
+        cr.translate(0, layout.bubble_offset(offset))
         draw_bubble(cr, bubble, now)
+        cr.restore()
     cr.restore()
 
 

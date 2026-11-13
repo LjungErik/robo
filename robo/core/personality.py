@@ -28,6 +28,8 @@ def next_action(robot, now):
     """Called when the robot has been idle long enough."""
     if robot.body.airborne:                 # done hovering / hanging up there
         robot.travel.next(robot, now)
+    elif robot.travel.busy(now):            # shooting a web, mid-teleport: wait for it
+        robot.body.rest(now, 1, 2)
     elif robot.busy_working:
         robot.body.rest(now, 4, 8)          # stays at his laptop
     elif robot.evil.active:

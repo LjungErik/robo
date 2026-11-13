@@ -84,7 +84,7 @@ to happen instead.
 | kind | what happens | keys |
 |---|---|---|
 | `fly` | takes off, flies to a random spot **anywhere on the screen**, hovers for `stay` seconds, flies on (`hops` spots in total), then lands. If you let go of him in the air, he hovers there. | `speed`, `gesture` (while flying), `hover_gesture`, `tilt`, `stay`, `hops`, `height` (extra lift, for jet flames), `particles` |
-| `hang` | zips up a thread to the **top of the screen**, hangs there for `stay` seconds (legs dangling), then lets go and drops down. | `speed`, `gesture`, `hover_gesture`, `stay` |
+| `hang` | **shoots a web line** up to the top of the screen, the web sticks (and your `anchor` layer can spin a web there), **zips up** it, **hangs and swings** for `stay` seconds (legs dangling), then **lets go and drops** or **lowers himself down** on the thread. | `gesture` (while shooting and zipping), `shoot` (s for the line to fly up), `pause` (s before zipping), `speed` (zip), `rope` (how far below the web his hand hangs), `hover_gesture` (hanging), `swing` (radians), `stay`, `end` (`drop`, `lower` or `either`), `climb_gesture`, `lower_speed`, `anchor_dx` (how far in front of his centre the line goes up) |
 | `teleport` | does `gesture` for `windup` seconds, vanishes in a puff of smoke and reappears somewhere else. | `gesture`, `windup`, `mood` |
 
 He always comes down to work on a task, to turn evil, or when he changes into
@@ -93,8 +93,21 @@ around!" out loud) asks him to go now.
 
 Drawings can react: the variables `airborne`, `travel` (`'fly'`, `'hang'`,
 `'teleport'` or `''`), `flying`, `hanging` and `cruising` (moving through the
-air right now) say what he's doing. See the jet flames in `ironman.yaml` and
-the web line in `spiderman.yaml`.
+air right now) say what he's doing. See the jet flames in `ironman.yaml`.
+
+**The web (or any line to the top of the screen).** While a `hang` trip is on,
+his window becomes a tall column from the top of the screen down to him, and
+two layers draw the line. They are *not* mirrored when he turns around, and
+he swings around the anchor:
+
+| layer | draws | variables |
+|---|---|---|
+| `tether` | the line from his hand to the anchor | `hand_x`, `hand_y` (his front hand), `anchor_x`, `anchor_y`, `web` (0..1: how far the line has flown; draw it to `lerp(hand_x, anchor_x, web)`), `web_gone` (seconds since he let go, -1 while holding) |
+| `anchor` | whatever is where it sticks, at the top edge of the screen | the same, plus `web_hit` (seconds since it stuck, -1 before) for building it up |
+
+`spiderman.yaml` spins a real orb web at the anchor: the spokes grow first,
+then the capture spiral is laid from the hub outward, each strand sagging
+toward the hub. A grappling hook, a vine or a bungee cord work the same way.
 
 ## Layers (outfits) and parts (the robot)
 
@@ -117,6 +130,7 @@ A costume adds **layers** in between:
 
 | layer | painted | for |
 |---|---|---|
+| `anchor`, `tether` | before everything (see Travel) | a web line to the top of the screen |
 | `behind` | behind everything, even the legs | capes, tails, jet flames |
 | `body` | on the torso | collars, ties, armour |
 | `behind_head` | behind the head | headdress flaps |

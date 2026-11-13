@@ -30,7 +30,10 @@ class Travel:
 
     fly       take off, fly to a random spot anywhere on the screen, hover,
               maybe fly on, then land
-    hang      zip up a thread to the top of the screen, hang there, drop down
+    hang      shoot a web line up to the top of the screen (gesture, `shoot` s),
+              a web builds where it hits, zip up it (`speed`), hang and swing
+              on it (`hover_gesture`, `swing`), then let go (`end: drop`) or
+              lower himself down on the thread (`end: lower`, like a spider)
     teleport  wind up (gesture), vanish in a puff of smoke, reappear elsewhere
     """
     kind: str
@@ -45,6 +48,15 @@ class Travel:
     height: float = 0.0              # extra lift while airborne (room for jet flames)
     windup: float = 0.0              # teleport: seconds of gesture before the poof
     particles: str = ''              # emitter while travelling
+    # hang only
+    shoot: float = 0.45              # seconds for the web line to reach the top of the screen
+    pause: float = 0.25              # seconds between the web sticking and zipping up
+    anchor_dx: float = 31.0          # the web goes up from this far in front of his centre
+    rope: float = 180.0              # how far below the web he hangs (design px, to his hand)
+    swing: float = 0.25              # pendulum swing when he arrives (radians)
+    lower_speed: float = 55.0        # design px / s when lowering himself down
+    end: str = 'either'              # 'drop', 'lower' or 'either'
+    climb_gesture: str = ''          # arms while lowering himself down
 
 
 @dataclass(frozen=True)
