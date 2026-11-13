@@ -1,0 +1,102 @@
+# His 80s hacker outfit, worn while he does a task for you (see robo/core/hacker.py).
+# role: work = never picked as a random dress-up character.
+id: hacker
+name: Hacker
+role: work
+antenna_y: -115
+
+gestures:
+  type: {back: "0.22 + sin(t * 26) * 0.09", front: "-0.22 + sin(t * 26) * 0.09"}   # hammering keys
+
+palette:
+  putty: "#E3D9BF"            # beige 80s plastic
+  putty_dark: "#C2B696"
+  jacket: "#34384C"
+  lapel: "#22253A"
+  foam: "#FF8A3D"             # walkman headphone foam
+  foam_dark: "#D96A22"
+  phosphor: "#39FF7A"
+  steel: "#C3CCDD"
+  pin: "#FFD23F"
+  lens: ["#141A2E", 0.4]
+  sticker: "#22253A"
+
+particles:
+  binary:                     # green ones and zeros rising past the sides of his head
+    rate: 4
+    life: 1.4
+    glyph: text
+    text: "01"
+    vars: {side: "choice(-1, 1)"}
+    at: ["side * rand(24, 32)", -36]
+    velocity: ["side * rand(10, 20)", "rand(-30, -20)"]
+    colors: ["#2BD96B"]
+
+layers:
+  head:                       # walkman headphones
+    - {path: "M -40 -86 C -42 -122 42 -122 40 -86", rope: [steel, 2.6, 5]}
+    - for: {side: [-1, 1]}
+      group:
+        - {circle: ["side * 41", -84, 9.5], fill: foam}
+        - {circle: ["side * 41", -84, 4], fill: foam_dark, stroke: none}
+  face:
+    - if: sit > 0.01          # green glow of the screen on his face
+      clip: {rect: [-28, -104, 56, 40], r: 13}
+      group:
+        - rect: [-40, -110, 80, 50]
+          fill: {linear: [0, -64, 0, -104], stops: [[0, [phosphor, "0.28 * sit"]], [1, [phosphor, 0]]]}
+          stroke: none
+    - for: {bx: [-12, 12]}    # big square 80s frames
+      vars: {ex: "bx + look"}
+      group:
+        - {rect: ["ex - 9.5", -94, 19, 15], r: 4, fill: lens, lw: 2.4}
+        - line: [["ex - 6", -83], ["ex - 1", -91]]
+          stroke: [{pick: [white, phosphor], i: "1 if sit > 0.5 else 0"}, 0.8]
+          lw: 1.6
+    - {line: [["-2.5 + look", -89], ["2.5 + look", -89]], lw: 2.4}
+  body:
+    - {rect: [-22, -53, 44, 35], r: 11, fill: jacket}
+    - {poly: [[-9, -53], [9, -53], [0, -38]], fill: white, stroke: none}   # t-shirt in the V
+    - for: {side: [-1, 1]}                                                 # lapels
+      line: [["side * 9", -53], [0, -38], ["side * 4", -26]]
+      stroke: lapel
+      lw: 2
+    - {circle: [13, -44, 3], fill: pin, lw: 1.2}                           # smiley pin
+    - {circle: [-14, -32, 2.2], fill: phosphor, lw: 1.2}
+  back_hand:                  # closed laptop tucked under his arm while he's interrupted
+    - if: sit <= 0.5
+      rotate: -angle
+      group:
+        - {rect: [-10, -10, 8, 22], r: 2, fill: putty, lw: 2}
+        - {line: [[-6, -9], [-6, 11]], stroke: putty_dark, lw: 1.4}
+  ground:                     # the laptop, open, seen from behind its lid
+    - if: sit > 0.5
+      group:
+        - poly: [[-23, -37], [23, -37], [31, -66], [-31, -66]]   # screen light spilling over the lid
+          fill: {linear: [0, -37, 0, -66], stops: [[0, [phosphor, 0.35]], [1, [phosphor, 0]]]}
+          stroke: none
+        - {rect: [-25, -38, 50, 30], r: 4, fill: putty, lw: 2.4}
+        - clip: {rect: [-25, -38, 50, 30], r: 4}                  # rainbow stripes across the corner
+          group:
+            - repeat: 5
+              line: [["-30 + i * 3.2", -8], ["-14 + i * 3.2", -38]]
+              stroke: {pick: ["#E5484D", "#FFA94D", "#FFD23F", "#43D17A", "#4DA8FF"], i: i}
+              lw: 3.2
+        - {rect: [-25, -38, 50, 30], r: 4, lw: 2.4}
+        - translate: [6, -23]                                    # ">_" sticker (never mirrored)
+          scale: [facing, 1]
+          group:
+            - {rect: [-9, -6, 18, 12], r: 3, fill: sticker, lw: 1.4}
+            - choose:
+                - if: int(t * 2) % 2
+                  text: ">_"
+                  at: [-6.5, 3]
+                  size: 8
+                  font: Monospace
+                  fill: phosphor
+                - {text: ">", at: [-6.5, 3], size: 8, font: Monospace, fill: phosphor}
+        - {rect: [-32, -10, 64, 9], r: 3, fill: putty_dark, lw: 2.2}   # keyboard deck
+        - if: int(t * 8) % 3                                       # disk light
+          circle: [26, -5.5, 1.6]
+          fill: phosphor
+          stroke: none

@@ -1,0 +1,86 @@
+# Flips a pancake sky-high and catches it; would love a cupcake.
+id: chef
+name: Chef
+order: 70
+words: [chef, cook]
+
+move: {gesture: flip, mood: happy, seconds: 3.6}
+antenna_y: -150
+
+gestures:
+  flip: {back: 0.3, front: "-1.25 - (0.5 if t % 1.2 < 0.15 else 0)"}   # jerk the pan up
+
+palette:
+  chef_white: "#FFFFFF"
+  pleat: "#C9D1E3"
+  button: "#9AA2B8"
+  bandana: "#E5484D"
+  pan: "#4A4F63"
+  pancake: "#F2C063"
+  butter: "#FFE98A"
+  dark_brown: "#7A4A28"
+  frosting: "#FFD1E8"
+  brown: "#A8693A"
+
+layers:
+  head:                       # puffy toque
+    - {circle: [-16, -131, 11], fill: chef_white}
+    - {circle: [16, -131, 11], fill: chef_white}
+    - {circle: [0, -138, 13], fill: chef_white}
+    - {rect: [-23, -124, 46, 13], r: 3, fill: chef_white}
+    - for: {x: [-12, 0, 12]}
+      line: [[x, -122], [x, -113]]
+      stroke: pleat
+      lw: 1.6
+  body:                       # chef's jacket
+    - {rect: [-22, -53, 44, 35], r: 11, fill: chef_white}
+    - for: {x: [-5.5, 5.5]}
+      group:
+        - for: {y: [-41, -33, -25]}
+          circle: [x, y, 1.7]
+          fill: button
+          stroke: none
+    - {path: "M -15 -53 C -8 -44 8 -44 15 -53 Z", fill: bandana}
+    - {circle: [0, -47, 3], fill: bandana}
+  front_hand:                 # frying pan; up, flip, and... caught!
+    - rotate: -angle
+      vars:
+        k: "(t % 1.2) / 1.2"
+        flipping: "arms == 'flip' and (t % 1.2) / 1.2 < 0.65"
+        h: "sin(k / 0.65 * pi) * 28 if flipping else 0"
+        spin: "k / 0.65 * tau if flipping else 0"
+      group:
+        - {line: [[0, 0], [10, -1]], rope: [dark_brown, 3.2, 5.8]}
+        - {ellipse: [19, -1, 9.5, 3.4], fill: pan}
+        - translate: [19, "-4.5 - h"]
+          scale: [1, "max(0.25, abs(cos(spin)))"]
+          ellipse: [0, 0, 7.5, 2.6]
+          fill: pancake
+          lw: 1.6
+        - if: h < 2
+          rect: [17.5, -8.5, 3.5, 2.2]
+          r: 0.8
+          fill: butter
+          stroke: none
+
+demand:
+  icon: cupcake
+  color: pink
+  draw:
+    - translate: [0, "-abs(sin(t * 3)) * 1.5"]
+      group:
+        - {poly: [[12, 27], [36, 27], [32.5, 43], [15.5, 43]], fill: sky}   # striped wrapper
+        - for: {x: [18, 22, 26, 30]}
+          line: [[x, 29], ["x - (x - 24) * 0.15", 41]]
+          stroke: white
+          lw: 1.6
+        - {ellipse: [24, 25, 14, 6], fill: frosting}
+        - {ellipse: [24, 19, 10.5, 5.5], fill: frosting}
+        - {ellipse: [24, 13.5, 6.5, 4.5], fill: frosting}
+        - {line: [[17, 24], [19, 23]], stroke: yellow, lw: 1.8}             # sprinkles
+        - {line: [[29, 22], [31, 21]], stroke: blue, lw: 1.8}
+        - {line: [[22, 18], [24, 17]], stroke: green, lw: 1.8}
+        - {line: [[27, 15], [29, 14]], stroke: red, lw: 1.8}
+        - {line: [[20, 26], [22, 25]], stroke: purple, lw: 1.8}
+        - {line: [[24, 6], [27, 2]], stroke: brown, lw: 1.6}
+        - {circle: [24, 7.5, 3.6], fill: red}

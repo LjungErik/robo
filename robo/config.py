@@ -8,12 +8,17 @@ platform can be generated from it.
 from dataclasses import asdict, dataclass, field, fields as dc_fields, replace
 from typing import Callable, Optional, Tuple
 
-from robo.core.characters import CHARACTERS
+from robo.core import characters
 
-ALL_CHARACTERS = tuple(CHARACTERS)
 # Characters that existed before settings files recorded "known_characters".
 # Anything not known when a file was saved is new, and starts switched on.
 LEGACY_KNOWN_CHARACTERS = ('pharaoh', 'cowboy', 'viking', 'accountant', 'mechanic', 'roman')
+ALL = ('*',)                          # "every character there is", including ones added later
+
+
+def all_characters():
+    """Every dress-up character (from the character files)."""
+    return characters.costume_ids()
 
 
 @dataclass(frozen=True)
@@ -27,7 +32,8 @@ class Settings:
     evil_after: float = 60.0            # seconds without input before turning evil
     dress_up: bool = True
     dress_up_every: float = 45.0        # about how often he dresses up as a character
-    characters: Tuple[str, ...] = ALL_CHARACTERS   # who he may dress up as
+    characters: Tuple[str, ...] = ALL   # who he may dress up as
+    look: str = 'robo'                  # what he looks like normally (a base design or character)
     voice: bool = True                  # speak answers out loud
     voice_pitch: float = 75.0           # 0..99, higher = squeakier
     voice_speed: float = 1.0            # speaking speed multiplier
@@ -60,8 +66,14 @@ class Settings:
         chars = self.characters
         if isinstance(chars, str):
             chars = [c.strip() for c in chars.split(',')]
-        wanted = set(chars)
-        put('characters', tuple(c for c in ALL_CHARACTERS if c in wanted))
+        known = all_characters()
+        if tuple(chars) == ALL:
+            put('characters', known)
+        else:
+            wanted = set(chars)
+            put('characters', tuple(c for c in known if c in wanted))
+        look = str(self.look or characters.DEFAULT_LOOK)
+        put('look', look if look in characters.look_ids() else characters.DEFAULT_LOOK)
 
     # ------------------------------------------------------------ helpers
     @property
@@ -82,7 +94,7 @@ class Settings:
         d = asdict(self)
         d.pop('demo', None)
         d['characters'] = list(self.characters)
-        d['known_characters'] = list(ALL_CHARACTERS)
+        d['known_characters'] = list(all_characters())
         return d
 
     @classmethod
@@ -97,9 +109,11 @@ class Settings:
             if key == 'characters':
                 if isinstance(value, (list, tuple, str)):
                     chosen = value.split(',') if isinstance(value, str) else list(value)
-                    known = data.get('known_characters', LEGACY_KNOWN_CHARACTERS)
-                    new = [c for c in ALL_CHARACTERS if c not in set(known)]
+                    seen = data.get('known_characters', LEGACY_KNOWN_CHARACTERS)
+                    new = [c for c in all_characters() if c not in set(seen)]
                     changes[key] = tuple(chosen) + tuple(new)
+            elif key == 'look':
+                changes[key] = str(value)
             elif isinstance(getattr(base, key), bool):
                 changes[key] = bool(value)
             else:
@@ -131,7 +145,8 @@ class Field:
     key: str
     label: str
     section: str
-    kind: str                         # 'float', 'seconds' (pick from options), 'bool', 'characters'
+    kind: str                         # 'float', 'seconds' (pick from options), 'bool',
+                                      # 'characters' (pick several), 'look' (pick one)
     help: str = ''
     min: float = 0.0
     max: float = 1.0
@@ -157,6 +172,9 @@ FIELDS = (
     Field('walk_speed', 'Walking speed', 'robo', 'float', 'From leisurely stroll to zoomies.',
           min=0.3, max=3.0, step=0.1, fmt=fmt_times),
     Field('naps', 'Naps', 'robo', 'bool', 'Let him doze off now and then (zzz).'),
+    Field('look', 'Look', 'robo', 'look',
+          'Who he is the rest of the time. Some can fly around the screen! '
+          'Add your own in ~/.config/robo/characters.'),
     Field('bubble_seconds', 'Bubble time', 'bubbles', 'float',
           'How long a notification bubble stays up.', min=2, max=20, step=1, fmt=fmt_seconds),
     Field('check_updates', 'Check for software updates', 'bubbles', 'bool',

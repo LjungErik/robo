@@ -4,8 +4,9 @@ The form is generated from robo.config.FIELDS, so adding a setting there
 adds it here automatically. Nothing changes until Apply is pressed; Apply
 calls on_apply(settings), which saves them and updates the running robot.
 
-The header shows Robo in his mechanic outfit tinkering with himself; he
-glows while there are unapplied changes and cheers when you apply them.
+The header shows Robo (in the look you picked) in his mechanic outfit
+tinkering with himself; he glows while there are unapplied changes and
+cheers when you apply them. Characters are listed from their files.
 """
 import math
 import random
@@ -21,7 +22,7 @@ import cairo  # noqa: E402
 from robo.config import FIELDS, FIELDS_BY_KEY, SECTIONS, Settings  # noqa: E402
 from robo.core import layout  # noqa: E402
 from robo.core.bubble import Bubble  # noqa: E402
-from robo.core.characters import CHARACTERS  # noqa: E402
+from robo.core import characters  # noqa: E402
 from robo.core.effects import Effects  # noqa: E402
 from robo.core.pose import Pose  # noqa: E402
 from robo.render.robot import draw_robot  # noqa: E402
@@ -163,6 +164,8 @@ class SettingsWindow:
         self._loading = False
         self._timer = None
         self._hover = None
+        self._picking = False
+        self._chip_art = []
         self._apply_time = -10.0
         self._status_timer = None
         self.t0 = self._last = time.monotonic()
@@ -241,6 +244,8 @@ class SettingsWindow:
             control = self._slider(f, row, top)
         elif f.kind == 'characters':
             control = self._character_chips(row)
+        elif f.kind == 'look':
+            control = self._look_chips(row)
         else:
             raise ValueError(f'unknown setting kind {f.kind!r}')
 
@@ -291,7 +296,7 @@ class SettingsWindow:
             value_label.set_text(f.fmt(get()))
         return _Control(row, get, set_and_label)
 
-    def _character_chips(self, row):
+    def _chip_flow(self):
         flow = Gtk.FlowBox()
         flow.set_selection_mode(Gtk.SelectionMode.NONE)
         flow.set_min_children_per_line(3)
@@ -299,31 +304,84 @@ class SettingsWindow:
         flow.set_homogeneous(True)
         flow.set_column_spacing(8)
         flow.set_row_spacing(8)
+        return flow
+
+    def _chip(self, flow, cid, tooltip, as_look=False):
+        """One toggle button with the character drawn on it (it acts on hover)."""
+        character = characters.get(cid)
+        btn = _style(Gtk.ToggleButton(), 'robo-chip')
+        btn.set_tooltip_text(tooltip)
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        art = Gtk.DrawingArea()
+        art.set_size_request(CHIP_W, CHIP_H)
+        art.connect('draw', self._draw_chip, cid, btn, as_look)
+        inner.pack_start(art, False, False, 0)
+        inner.pack_start(Gtk.Label(label=character.title), False, False, 0)
+        btn.add(inner)
+        key = ('look', cid) if as_look else cid
+        btn.connect('enter-notify-event', lambda *_a, k=key: setattr(self, '_hover', k))
+        btn.connect('leave-notify-event', lambda *_a: setattr(self, '_hover', None))
+        flow.add(btn)
+        self._chip_art.append(art)
+        return btn
+
+    def _character_chips(self, row):
+        flow = self._chip_flow()
         chips = {}
-        for cid, character in CHARACTERS.items():
-            btn = _style(Gtk.ToggleButton(), 'robo-chip')
-            btn.set_tooltip_text(f'Hover to see the {character.title.lower()} in action')
-            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            art = Gtk.DrawingArea()
-            art.set_size_request(CHIP_W, CHIP_H)
-            art.connect('draw', self._draw_chip, cid, btn)
-            inner.pack_start(art, False, False, 0)
-            inner.pack_start(Gtk.Label(label=character.title), False, False, 0)
-            btn.add(inner)
+        for cid in characters.costume_ids():
+            title = characters.title(cid).lower()
+            btn = self._chip(flow, cid, f'Hover to see the {title} in action')
             btn.connect('toggled', self._changed)
-            btn.connect('enter-notify-event', lambda *_a, c=cid: setattr(self, '_hover', c))
-            btn.connect('leave-notify-event', lambda *_a: setattr(self, '_hover', None))
-            flow.add(btn)
-            chips[cid] = (btn, art)
+            chips[cid] = btn
         row.pack_start(flow, False, False, 0)
-        self._chip_art = [art for _btn, art in chips.values()]
 
         def get():
-            return tuple(c for c, (b, _a) in chips.items() if b.get_active())
+            return tuple(c for c, b in chips.items() if b.get_active())
 
         def set_(value):
-            for c, (b, _a) in chips.items():
+            for c, b in chips.items():
                 b.set_active(c in value)
+        return _Control(row, get, set_)
+
+    def _look_chips(self, row):
+        """Pick exactly one: what Robo looks like the rest of the time."""
+        flow = self._chip_flow()
+        chips, chosen = {}, {'id': characters.DEFAULT_LOOK}
+
+        def toggled(btn, cid):
+            if self._picking:
+                return
+            self._picking = True
+            try:
+                if btn.get_active():
+                    chosen['id'] = cid
+                for c, b in chips.items():
+                    b.set_active(c == chosen['id'])
+            finally:
+                self._picking = False
+            self._changed()
+
+        for cid in characters.look_ids():
+            c = characters.get(cid)
+            can = ', '.join({'fly': 'flies around the screen', 'hang': 'swings up on a web',
+                             'teleport': 'teleports'}[a.kind] for a in c.travel)
+            tip = c.title + (f' ({can})' if can else '')
+            btn = self._chip(flow, cid, tip, as_look=True)
+            btn.connect('toggled', toggled, cid)
+            chips[cid] = btn
+        row.pack_start(flow, False, False, 0)
+
+        def get():
+            return chosen['id']
+
+        def set_(value):
+            chosen['id'] = value if value in chips else characters.DEFAULT_LOOK
+            self._picking = True
+            try:
+                for c, b in chips.items():
+                    b.set_active(c == chosen['id'])
+            finally:
+                self._picking = False
         return _Control(row, get, set_)
 
     def _action_bar(self):
@@ -438,7 +496,8 @@ class SettingsWindow:
         hop = abs(math.sin((now - self._apply_time) / 0.6 * 2 * math.pi)) * 10 \
             if now - self._apply_time < 0.6 else 0.0
         blink = 0.1 if (t % 4.0) < 0.14 else 1.0
-        pose = Pose(t=t, costume='mechanic', lift=hop, openness=blink,
+        look = self.controls['look'].get() if 'look' in self.controls else ''
+        pose = Pose(t=t, costume='mechanic', skin=look, lift=hop, openness=blink,
                     mood='happy' if cheering else ('wince' if fixing else 'normal'),
                     arms='up' if cheering else ('fix' if fixing else 'rest'),
                     antenna='alert' if self.dirty else 'normal', alert_kind='warning',
@@ -459,14 +518,19 @@ class SettingsWindow:
         cr.restore()
         return False
 
-    def _draw_chip(self, widget, cr, cid, btn):
+    def _draw_chip(self, widget, cr, cid, btn, as_look=False):
         now = time.monotonic()
         t = now - self.t0
-        character = CHARACTERS[cid]
-        hovered = self._hover == cid
-        pose = Pose(t=t if hovered else 0.3, costume=cid,
-                    arms=character.move if hovered else 'rest',
-                    mood=character.move_mood if hovered else 'normal')
+        character = characters.get(cid)
+        if character is None:
+            return False
+        hovered = self._hover == (('look', cid) if as_look else cid)
+        move = character.move
+        acting = hovered and move is not None
+        pose = Pose(t=t if hovered else 0.3,
+                    costume='' if as_look else cid, skin=cid if as_look else '',
+                    arms=move.gesture if acting else ('wave' if hovered else 'rest'),
+                    mood=move.mood if acting else ('happy' if hovered else 'normal'))
         w, h = widget.get_allocated_width(), widget.get_allocated_height()
         s = (h - 4) / 165
         cr.save()

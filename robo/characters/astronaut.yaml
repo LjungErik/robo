@@ -1,0 +1,65 @@
+# Floats around in zero gravity among the stars, moon-walks, wants a rocket.
+id: astronaut
+name: Astronaut
+order: 80
+words: [astronaut, space, spaceman]
+
+move: {gesture: float, mood: happy, seconds: 4.5, particles: stars, lift: "16 + sin(t * 2) * 6"}
+walk: {speed: 0.8, gallop: true}            # moon bounce
+antenna_y: -128
+
+gestures:
+  float: {back: "1.3 + sin(t * 2) * 0.2", front: "-1.3 - sin(t * 2) * 0.2"}
+
+palette:
+  suit: "#C3CCDD"
+  panel: "#E7ECF5"
+  red_button: "#E2474F"
+  gold: "#F5C542"
+  lapis: "#3D6FD9"
+  glass: ["#C7EBFF", 0.28]
+
+particles:
+  stars:                                    # twinkling all around him
+    rate: 4
+    life: 1.4
+    glyph: star
+    at: ["rand(-48, 48)", "rand(-140, -20)"]
+    velocity: [0, "rand(-8, -2)"]
+
+layers:
+  behind:                                   # backpack
+    - {rect: [-31, -57, 15, 34], r: 4, fill: suit}
+    - {circle: [-24, -48, 2], fill: red_button, stroke: none}
+  body:
+    - {ellipse: [0, -53, 21, 4.5], fill: suit}           # neck ring
+    - {rect: [-10, -46, 20, 13], r: 3, fill: panel, lw: 1.8}
+    - for: {k: [0, 1, 2]}
+      circle: ["-5 + k * 5", -39.5, 2]
+      fill: {pick: [red_button, gold, lapis], i: k}
+      stroke: none
+    - {rect: [12, -46, 8, 6], r: 1, fill: lapis, lw: 1.4}   # mission patch
+    - {line: [[13, -43], [19, -43]], stroke: white, lw: 1.4}
+  head:                                     # glass bubble helmet
+    - {circle: [0, -84, 45], fill: glass, lw: 2.4}
+    - {arc: [0, -84, 38, "pi * 1.12", "pi * 1.42"], stroke: ["#FFFFFF", 0.85], lw: 3.2}
+    - {circle: [27, -112, 2.2], fill: ["#FFFFFF", 0.85], stroke: none}
+
+demand:
+  icon: rocket
+  color: red
+  draw:
+    - translate: [0, "sin(t * 4) * 1.5"]
+      vars: {flick: "abs(sin(t * 20)) * 4"}
+      group:
+        - path: "M 19.5 36 C 20 42 24 44+flick 24 46+flick C 24 44+flick 28 42 28.5 36 Z"
+          fill: orange
+          lw: 1.6
+        - {poly: [[22, 36], [24, "41 + flick * 0.6"], [26, 36]], fill: yellow, stroke: none}
+        - for: {side: [-1, 1]}                          # fins
+          poly: [["24 + side * 6.5", 25], ["24 + side * 13", 37], ["24 + side * 6.5", 34]]
+          fill: red
+        - {path: "M 24 3 C 32 9 32.5 24 30.5 34 L 17.5 34 C 15.5 24 16 9 24 3 Z", fill: white}
+        - {circle: [24, 18, 4.6], fill: sky}
+    - {sparkle: [8, 12, "3.5 * (0.6 + 0.4 * sin(t * 6))"], fill: yellow, stroke: none}
+    - {sparkle: [41, 28, "3 * (0.6 + 0.4 * cos(t * 5))"], fill: yellow, stroke: none}

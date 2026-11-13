@@ -1,0 +1,261 @@
+# Robo himself: the base design every costume is drawn on.
+#
+# Copy this file to ~/.config/robo/characters/robo.yaml to redesign him, or
+# give your copy another id (and `name`) and pick it under Settings → Robo → Look.
+# The format is described in robo/characters/README.md.
+#
+# Coordinates: (0, 0) is the ground between his feet, y grows DOWN (so he
+# lives at negative y), +x is the way he faces. He is about 130 units tall.
+
+id: robo
+name: Robo
+role: base
+order: 0
+
+rig:
+  shoulder: [21, -45]      # arm pivots at (±x, y)
+  arm_length: 19           # pivot to the centre of the hand (props are drawn there)
+  neck: [0, -58]           # the head tilts around this point
+  sit_drop: 12             # how far his body sinks when he sits down
+  head_top: -112           # hearts and z's float up from here
+  antenna_y: -112          # where the antenna sticks out (costumes move it up with hats)
+
+palette:
+  # {good, evil}: the colour fades to the evil one when he turns evil
+  body:   {good: "#F4F7FB", evil: "#5C6178"}
+  shade:  {good: "#DCE4F0", evil: "#40455A"}
+  accent: {good: "#8EE3CF", evil: "#E8344B"}
+  screen: {good: "#26334F", evil: "#2C0C16"}
+  eye:    {good: "#7DF3FF", evil: "#FF3B4E"}
+  eye_good: "#7DF3FF"
+  cheek: "#FF8CAD"
+  coral: "#FF8A80"
+  butter: "#FFD54F"
+  mint: "#8EE3CF"
+  red_e: "#E8344B"
+  eye_e: "#FF3B4E"
+  shade_e: "#40455A"
+  sweat: "#9FDCFF"
+  shadow: "#1A1F33"
+  tongue: "#FF8099"
+  # `antenna` is filled in while he runs: the colour of what he is reporting
+
+gestures:
+  # Arm angles in radians. 0 = hanging down; a positive back angle swings the
+  # back arm outward, a negative front angle lifts the front arm.
+  # place: behind (default) / front (hands in front of the body) /
+  #        over_head (front arm drawn in front of the head)
+  rest:   {back: "0.2 + sin(t * 2.2) * 0.05", front: "-0.2 - sin(t * 2.2) * 0.05"}
+  swing:  {back: "0.2 + sin(phase) * 0.55", front: "-0.2 + sin(phase) * 0.55"}
+  wave:   {back: 0.2, front: "-2.55 + sin(t * 11) * 0.4"}
+  up:     {back: "2.55 + sin(t * 9) * 0.25", front: "-2.55 - sin(t * 9) * 0.25"}
+  scheme: {back: "-1.0 + sin(t * 14) * 0.13", front: "1.0 + sin(t * 14) * 0.13", place: front}
+  # getting around (any character with a `travel:` entry can use these)
+  fly:    {back: "1.35 + sin(t * 3) * 0.08", front: -1.65}
+  hover:  {back: "0.5 + sin(t * 2) * 0.06", front: "-0.5 - sin(t * 2) * 0.06"}
+
+parts:
+  shadow:
+    - vars: {r: "max(12, 28 - lift * 0.8)"}
+      ellipse: [0, -1, r, "r * 0.22"]
+      fill: [shadow, "0.22 * max(0.3, 1 - lift / 40)"]
+      stroke: none
+
+  legs:
+    - choose:
+        - if: sit > 0.5                    # sitting cross-legged: feet poke out sideways
+          group:
+            - {ellipse: [-22, -5, 8.5, 5], fill: accent}
+            - {ellipse: [22, -5, 8.5, 5], fill: accent}
+        - for: {side: [-1, 1]}
+          vars: {ll: "leg_a if side < 0 else leg_b"}
+          group:
+            - {rect: ["side * 11 - 5", "-21 - ll + drop", 10, "15 - drop"], r: 4, fill: shade}
+            - {ellipse: ["side * 11 + 2", "-5 - ll", 8.5, 5], fill: accent}
+
+  # drawn once per arm, rotated at the shoulder (vars: side = -1 back / 1 front, angle)
+  arm:
+    - {rect: [-4, -2, 8, 19], r: 4, fill: shade}
+  hand:
+    - {circle: [0, 19, 5], fill: accent}
+
+  torso:
+    - {rect: [-22, -53, 44, 35], r: 11, fill: body}
+    - {rect: [-11, -45, 22, 14], r: 5, fill: shade, lw: 2}
+    - for: {i: [0, 1, 2]}                  # three lights; evil = a red chaser
+      circle: ["(i - 1) * 5.5", -38, 2.3]
+      stroke: none
+      fill:
+        pick: [coral, butter, mint, eye_e, {mix: [eye_e, shade_e], k: 0.6}]
+        i: "i if evil <= 0.5 else (3 if int(t * 6 + i) % 3 == 0 else 4)"
+
+  head_back:
+    - {rect: [-43, -93, 10, 20], r: 4, fill: accent}      # ears
+    - {rect: [33, -93, 10, 20], r: 4, fill: accent}
+    - if: evil > 0.5                                       # horns
+      for: {side: [-1, 1]}
+      translate: ["side * 21", -108]
+      scale: "smooth((evil - 0.5) * 2)"
+      path: "M -6 0 C -5 -8 side*2 -12 side*5 -15 C side*4 -9 6 -6 6 0 Z"
+      fill: red_e
+      lw: 2.2
+
+  head:
+    - {rect: [-37, -112, 74, 58], r: 20, fill: body}
+    - {rect: [-28, -104, 56, 40], r: 13, fill: screen, lw: 2}
+    - {rect: [-22, -100, 13, 3.5], r: 1.7, fill: ["#FFFFFF", 0.14], stroke: none}
+
+  face:
+    # ---- eyes
+    - for: {bx: [-12, 12]}
+      vars: {ex: "bx + look", ey: -87, side: "-1 if bx < 0 else 1"}
+      choose:
+        - if: "mood in ('evil', 'laugh')"        # angry red eyes with a brow
+          vars: {h: "max(0.15, openness) * (0.55 if mood == 'laugh' else 1)"}
+          group:
+            - group:
+                - {circle: [0, -2, 9.5], fill: [eye_e, 0.22], stroke: none}
+                - path: "M side*6 -8 L -side*6 -2.5 L -side*5 3 L side*5 3 Z"
+                  fill: eye_e
+                  stroke: none
+              translate: [ex, "ey + 2"]
+              scale: [1, h]
+            - line: [["ex + side * 7", "ey - 11"], ["ex - side * 6", "ey - 6"]]
+              stroke: eye_e
+        - if: "mood in ('roar', 'wince')"        # squeezed shut: > <
+          line: [["ex - side * 5", "ey - 5"], ["ex + side * 4", ey], ["ex - side * 5", "ey + 5"]]
+          stroke: eye
+          lw: 3
+        - if: "mood in ('happy', 'sing', 'cat')"
+          arc: [ex, "ey + 3", 5.5, "pi * 1.12", "pi * 1.88"]
+          stroke: eye
+          lw: 3.2
+        - if: mood == 'sleep'
+          arc: [ex, "ey - 1", 5, "pi * 0.15", "pi * 0.85"]
+          stroke: eye
+        - if: mood == 'surprised'
+          group:
+            - {circle: [ex, ey, 6.5], fill: eye, stroke: none}
+            - {circle: ["ex - 2", "ey - 2.2", 1.8], fill: ["#FFFFFF", 0.9], stroke: none}
+        - if: mood == 'sad'                      # droopy eyes, worried brows
+          vars: {h: "max(1.6, 9 * openness)"}
+          group:
+            - {rect: ["ex - 4.5", "ey - h / 2 + 2.5", 9, h], r: "h / 2", fill: eye, stroke: none}
+            - line: [["ex - side * 5", "ey - 7"], ["ex + side * 4", "ey - 4.5"]]
+              stroke: eye
+              lw: 2.2
+        - vars:                                  # normal (focus = half closed)
+            o: "openness * (0.45 if mood == 'focus' else 1)"
+            h: "max(1.6, 14 * o)"
+          group:
+            - rect: ["ex - 4.8", "ey - h / 2", 9.6, h]
+              r: "4.8 if h > 9.6 else h / 2"
+              fill: eye
+              stroke: none
+            - if: o > 0.6
+              circle: ["ex - 1.6", "ey - 3.2", 1.6]
+              fill: ["#FFFFFF", 0.9]
+              stroke: none
+
+    # ---- cheeks (fade away when evil)
+    - if: evil < 0.966
+      for: {cx: [-19, 19]}
+      ellipse: ["cx + look * 0.5", -76, 4.2, 2.6]
+      fill: [cheek, "0.6 * (1 - evil)"]
+      stroke: none
+
+    # ---- mouth
+    - vars: {mx: "look * 0.6", my: -75}
+      choose:
+        - if: "mood in ('evil', 'laugh')"        # grin with fangs
+          vars: {o: "3.5 + (abs(sin(t * 18)) * 3 if mood == 'laugh' else 0) + talk * 4"}
+          group:
+            - path: >-
+                M mx-12 my-5 C mx-6 my+o mx+6 my+o mx+12 my-5
+                C mx+5 my-1 mx-5 my-1 mx-12 my-5 Z
+              fill: eye_e
+              stroke: none
+            - for: {fx: [-5, 5]}
+              poly: [["fx - 2.2", "my - 2.2"], [fx, "my + 2.2"], ["fx + 2.2", "my - 2.2"]]
+              fill: ["#FFFFFF", 0.95]
+              stroke: none
+        - if: "talk > 0.06 and mood not in ('roar', 'sleep')"   # talking: follows his voice
+          vars: {w: "3.6 if mood == 'sad' else 4.2"}
+          ellipse: [mx, "my - 1.5", "w + talk * 1.5", "0.9 + talk * 4.6"]
+          fill: eye
+          stroke: none
+        - if: mood == 'sad'
+          arc: [mx, "my + 1", 4, "pi * 1.15", "pi * 1.85"]
+          stroke: eye
+          lw: 2.3
+        - if: mood == 'roar'                     # big open shout
+          vars: {o: "7 + abs(sin(t * 22)) * 1.5"}
+          group:
+            - path: "M mx-8 my-4 L mx+8 my-4 C mx+8 my+o mx-8 my+o mx-8 my-4 Z"
+              fill: eye
+              stroke: none
+            - {ellipse: [mx, "my + o * 0.55", 3.5, 2], fill: tongue, stroke: none}
+        - if: mood == 'sing'                     # little "ooh" that wobbles
+          circle: [mx, "my - 1", "2.4 + abs(sin(t * 7)) * 1.6"]
+          fill: eye
+          stroke: none
+        - if: mood == 'cat'                      # :3
+          path: "A mx-2.6 my-2.5 2.6 0 pi S A mx+2.6 my-2.5 2.6 0 pi"
+          stroke: eye
+          lw: 2.3
+        - if: mood == 'wince'                    # wobbly zigzag
+          line: [["mx - 6", "my - 2"], ["mx - 4", my], ["mx - 2", "my - 2"], [mx, my],
+                 ["mx + 2", "my - 2"], ["mx + 4", my], ["mx + 6", "my - 2"]]
+          stroke: eye
+          lw: 2.3
+        - if: mood == 'focus'
+          line: [["mx - 3.5", "my - 2"], ["mx + 3.5", "my - 2"]]
+          stroke: eye
+          lw: 2.3
+        - if: mood == 'happy'
+          path: "A mx my-1.5 5 0 pi Z"
+          fill: eye
+          stroke: none
+        - if: mood == 'surprised'
+          circle: [mx, my, 3]
+          stroke: eye
+          lw: 2.3
+        - if: mood == 'sleep'
+          circle: [mx, my, 1.8]
+          stroke: eye
+          lw: 2.3
+        - arc: [mx, "my - 3", 4, "pi * 0.15", "pi * 0.85"]   # a little smile
+          stroke: eye
+          lw: 2.3
+
+    # ---- glitch: scanline noise on the face screen while he switches good/evil
+    - if: glitch > 0
+      clip: {rect: [-28, -104, 56, 40], r: 13}
+      group:
+        - repeat: "3 + glitch * 5"
+          rect: ["-28 + rand(-8, 8)", "rand(-104, -64)", 56, "rand(1, 3.5)"]
+          fill: [{pick: [eye_good, eye_e, white], i: "rand(0, 3)"}, "0.6 * glitch"]
+          stroke: none
+
+  overlay:
+    - if: sweat                                  # caught in the act...
+      vars: {y: "-100 + (t * 14) % 10"}
+      path: >-
+        M 31 y-7 C 33 y-3 35 y-1 35 y+1.5 C 35 y+4 33 y+5 31 y+5
+        C 29 y+5 27 y+4 27 y+1.5 C 27 y-1 29 y-3 31 y-7 Z
+      fill: sweat
+      lw: 1.8
+
+  # drawn at antenna_y (the top of whatever hat he wears)
+  antenna:
+    - rotate: >-
+        sin(t * 3) * 0.12 + (sin(phase) * 0.18 if walking else 0)
+        + (sin(t * 7) * 0.25 if dangling else 0) + (sin(t * 25) * 0.25 if arms == 'fix' else 0)
+      group:
+        - line: [[0, 0], [0, -11]]
+        - if: glow > 0
+          circle: [0, -15, 11]
+          fill: [antenna, "0.35 * glow"]
+          stroke: none
+        - {circle: [0, -15, 5.2], fill: antenna, lw: 2.2}
+        - {circle: [-1.6, -16.8, 1.5], fill: ["#FFFFFF", 0.85], stroke: none}

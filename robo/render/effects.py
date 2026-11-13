@@ -1,45 +1,63 @@
-"""Little flying things (numbers, music notes, sparks) and the costume poof."""
+"""Little flying things (numbers, music notes, sparks) and the costume poof.
+
+Each particle kind comes from a character file (`particles:`): it picks one
+of the glyphs drawn here, or brings its own drawing (`draw:`).
+"""
 import math
 
 import cairo
 
+from robo.design import REGISTRY
+
+from .interpreter import safe_draw
 from .shapes import INK, PINK, WHITE, YELLOW, circle, ellipse, heart_path, hexc, paint, sparkle
 
 NUMBER_COLOURS = (hexc('#2F9E5B'), hexc('#3D6FD9'), hexc('#E5484D'))
 NOTE = hexc('#FF7AB6')
 STAR = hexc('#FFE27A')
-PHOSPHOR = hexc('#2BD96B')                 # green ones and zeros from the laptop
 MAGIC = (hexc('#B98CFF'), hexc('#FF7AB6'), hexc('#7DF3FF'), hexc('#FFD23F'))
+NO_PALETTE = {'_palette': {}, 'evil': 0.0}
+
+
+def _colour(em, pt, default):
+    if em is not None and em.colours:
+        c = em.colours[pt.index % len(em.colours)]
+        return c(NO_PALETTE) if c else default[pt.index % len(default)]
+    return default[pt.index % len(default)]
 
 
 def draw_particles(cr, particles, now):
     """Particles are in robot coordinates (origin = ground point)."""
-    for i, pt in enumerate(particles):
+    for pt in particles:
         age = now - pt.born
-        k = age / pt.life
+        k = age / pt.life if pt.life > 0 else 1
         if not 0 <= k < 1:
             continue
         x, y = pt.x + pt.vx * age, pt.y + pt.vy * age
         alpha = 1 - k * k
+        em = REGISTRY.emitter(pt.kind) if pt.kind else None
         cr.save()
         cr.push_group()
-        if pt.glyph == 'note':
+        if em is not None and em.draw is not None:
+            env = dict(NO_PALETTE, x=x, y=y, k=k, age=age, i=pt.index, glyph=pt.glyph)
+            safe_draw(em.draw, cr, env, f'particles {pt.kind}')
+        elif pt.glyph == 'note':
             _note(cr, x, y + math.sin(age * 8) * 2)
         elif pt.glyph == 'spark':
             sparkle(cr, x, y, 4.5 * (1 - k) + 1.5, YELLOW)
         elif pt.glyph == 'star':
             sparkle(cr, x, y, 4 * math.sin(k * math.pi) + 0.5, STAR)
         elif pt.glyph == 'magic':
-            sparkle(cr, x, y, 5 * (1 - k) + 1.5, MAGIC[i % len(MAGIC)])
+            sparkle(cr, x, y, 5 * (1 - k) + 1.5, _colour(em, pt, MAGIC))
         elif pt.glyph == 'heart':
             heart_path(cr, x, y, 0.32)
             paint(cr, PINK, INK, 1.4)
         else:
             cr.select_font_face('Sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             cr.set_font_size(10 + k * 3)
+            col = _colour(em, pt, NUMBER_COLOURS)
             cr.move_to(x, y)
             cr.text_path(pt.glyph)
-            col = PHOSPHOR if pt.glyph in '01' else NUMBER_COLOURS[i % len(NUMBER_COLOURS)]
             paint(cr, col, WHITE, 2.5)
             cr.move_to(x, y)
             cr.text_path(pt.glyph)

@@ -1,0 +1,122 @@
+# Iron Man: red and gold armour, a glowing arc reactor, repulsor blasts, and he
+# FLIES: now and then he takes off on his boot jets, flies to a random spot
+# anywhere on the screen, hovers there, maybe flies on, then lands.
+# Wants shawarma afterwards, obviously.
+id: ironman
+name: Iron Man
+order: 200
+words: [iron man, ironman, tony stark, tony, avenger]
+
+move: {gesture: repulsor, mood: focus, seconds: 3.0, particles: repulsor}
+walk: {speed: 1.1}
+
+travel:
+  - kind: fly
+    chance: 0.3            # each time he picks something to do
+    speed: 190             # design px / s
+    gesture: fly           # fist first while flying...
+    hover_gesture: hover   # ...palms down (repulsors on) while hovering
+    tilt: 0.22
+    stay: [3, 8]           # seconds hovering at each spot
+    hops: [1, 2]           # spots to visit before landing
+    height: 20             # room under his boots for the jet flames
+
+# Robo's own colours, swapped for the suit (evil Iron Man still goes dark grey).
+recolor:
+  body: "#C8202E"          # head and chest: red
+  shade: "#F2B33D"         # arms and legs: gold
+  accent: "#B51B28"        # hands, boots, ears: dark red
+  eye: "#D8FBFF"           # glowing eyes
+
+palette:
+  gold: "#F2B33D"
+  socket: "#3B2A0E"
+  reactor: "#7FE7FF"
+  reactor_rim: "#2A3A4A"
+  flame: "#FF8A3D"
+  flame_core: "#FFF1A8"
+  repulsor: "#BFF4FF"
+  paper: "#F4EEE2"
+  wrap: "#F2C98A"
+  meat: "#B5652E"
+  sauce: "#E5484D"
+
+gestures:
+  repulsor: {back: 0.35, front: "-1.57 + sin(t * 30) * 0.03"}   # palm out, blasting
+
+particles:
+  repulsor:                # rings of light shooting out of his palm
+    rate: 7
+    life: 0.45
+    at: ["f * 44", -45]
+    velocity: ["f * 150", 0]
+    draw:
+      - {circle: [x, y, "2 + k * 7"], stroke: [repulsor, "1 - k"], lw: "2.5 * (1 - k) + 0.5"}
+      - {circle: [x, y, "2.2 * (1 - k)"], fill: [white, "1 - k"], stroke: none}
+
+parts:
+  head:                    # red helmet with a gold faceplate
+    - {rect: [-37, -112, 74, 58], r: 20, fill: body}
+    - path: "M -24 -97 L -7 -97 L 0 -105 L 7 -97 L 24 -97 L 27 -82 L 18 -65 L -18 -65 L -27 -82 Z"
+      fill: gold
+      lw: 2
+    - for: {bx: [-12, 12]}                   # dark eye slots: his eyes glow inside them
+      rect: ["bx - 7.5", -93.5, 15, 13]
+      r: 4
+      fill: socket
+      stroke: none
+    - {rect: [-9, -80, 18, 9], r: 3.5, fill: socket, stroke: none}   # mouth slot
+    - {line: [[0, -97], [0, -103]], stroke: ["#B9822A", 1], lw: 1.4}
+  hand:                    # gauntlets; the repulsor in the palm lights up when used
+    - {circle: [0, 19, 5], fill: accent}
+    - if: "arms in ('repulsor', 'hover', 'fly')"
+      group:
+        - {circle: [0, 21, 7.5], fill: [repulsor, "0.3 + 0.1 * sin(t * 12)"], stroke: none}
+        - {circle: [0, 21, 2.6], fill: white, stroke: none}
+
+layers:
+  behind:                  # boot jets while he flies
+    - if: "airborne or arms == 'fly'"
+      for: {fx: [-9, 13]}
+      vars: {l: "21 + sin(t * 31 + fx) * 3.5"}
+      group:
+        - {ellipse: [fx, "l * 0.45", 7, "l * 0.6"], fill: [flame, 0.25], stroke: none}
+        - path: "M fx-4.5 -3 C fx-4 5 fx-1 l*0.7 fx l C fx+1 l*0.7 fx+4 5 fx+4.5 -3 Z"
+          fill: flame
+          stroke: none
+        - path: "M fx-2.5 -3 C fx-2 3 fx-0.5 l*0.45 fx l*0.62 C fx+0.5 l*0.45 fx+2 3 fx+2.5 -3 Z"
+          fill: flame_core
+          stroke: none
+  body:                    # arc reactor (glows in the alert colour while he reports something)
+    - {circle: [0, -38, "11 + sin(t * 4)"], fill: [reactor, 0.25], stroke: none}
+    - {circle: [0, -38, 7.5], fill: reactor_rim, lw: 2}
+    - circle: [0, -38, 5.2]
+      fill: {radial: [0, -38, 0, 5.2],
+             stops: [[0, white], [1, {pick: [reactor, antenna], i: "1 if antenna == 'alert' else 0"}]]}
+      stroke: none
+    - for: {a: [0, 1, 2]}
+      line: [["cos(a * 2.094 + 0.5) * 2.5", "-38 + sin(a * 2.094 + 0.5) * 2.5"],
+             ["cos(a * 2.094 + 0.5) * 5", "-38 + sin(a * 2.094 + 0.5) * 5"]]
+      stroke: [reactor_rim, 0.5]
+      lw: 1.2
+    - {line: [[-14, -25], [-5, -25]], stroke: gold, lw: 2.2}          # gold ab plates
+    - {line: [[5, -25], [14, -25]], stroke: gold, lw: 2.2}
+
+demand:
+  icon: shawarma
+  color: orange
+  draw:
+    - translate: [0, "sin(t * 3) * 1.2"]
+      group:
+        - {circle: [19, 15, 3.4], fill: green, lw: 1.4}               # the filling
+        - {circle: [24.5, 12.5, 4], fill: meat, lw: 1.4}
+        - {circle: [29.5, 15, 3.2], fill: green, lw: 1.4}
+        - {circle: [22, 11, 2.1], fill: sauce, stroke: none}
+        - {ellipse: [24, 18, 12, 4.5], fill: wrap, lw: 2}
+        - {path: "M 12.5 18 L 35.5 18 L 31 44 L 17 44 Z", fill: paper, lw: 2}   # paper wrap
+        - {line: [[15.5, 31], [32.5, 31]], stroke: sauce, lw: 3}
+    - repeat: 2                                                         # steam
+      vars: {k: "(t * 0.7 + i / 2) % 1"}
+      path: "M 16+i*16 8-k*6 C 13+i*16 5-k*6 19+i*16 2-k*6 16+i*16 -1-k*6"
+      stroke: [grey, "1 - k"]
+      lw: 1.6

@@ -1,0 +1,96 @@
+# Dances a jig with his parrot; wants treasure, obviously.
+id: pirate
+name: Pirate
+order: 100
+words: [pirate]
+
+move: {gesture: jig, mood: happy, seconds: 3.5, particles: notes, lift: "abs(sin(t * 8)) * 6"}
+antenna_y: -140
+
+gestures:
+  jig: {back: "1.2 + sin(t * 8) * 0.9", front: "-1.2 + sin(t * 8) * 0.9"}
+
+palette:
+  black: "#2D2F3E"
+  gold: "#F5C542"
+  parrot: "#4CCB6E"
+  parrot_dark: "#2F9E5B"
+  feet: "#F29A4A"
+  red: "#E2474F"
+  stripe: "#E5484D"
+  sash: "#A8323A"
+  brown: "#A8693A"
+
+particles:
+  notes:
+    rate: 2.2
+    life: 1.8
+    glyph: note
+    at: ["f * 20", -50]
+    velocity: ["f * rand(14, 26)", "rand(-28, -16)"]
+
+layers:
+  head:
+    - path: >-                               # tricorn
+        M -46 -116 C -34 -107 34 -107 46 -116 C 40 -121 34 -141 0 -141
+        C -34 -141 -40 -121 -46 -116 Z
+      fill: black
+    - {path: "M -43 -115 C -32 -108.5 32 -108.5 43 -115", stroke: gold, lw: 2}
+    - {line: [[-7, -121], [7, -115]], stroke: white, lw: 2.4}     # crossbones
+    - {line: [[7, -121], [-7, -115]], stroke: white, lw: 2.4}
+    - {circle: [0, -127, 5.5], fill: white, stroke: none}          # skull
+    - for: {x: [-2, 2]}
+      circle: [x, -127.5, 1.3]
+      fill: black
+      stroke: none
+    - translate: [-41, -56]                  # the parrot, on his back shoulder
+      vars:
+        dancing: arms == 'jig'
+        bob: "sin(t * 10) * 1.6 if arms == 'jig' else sin(t * 2) * 0.5"
+      group:
+        - for: {x: [-2, 2]}
+          line: [[x, 0], [x, -3]]
+          stroke: feet
+          lw: 1.6
+        - {poly: [[-1, -4], [-5, 6], [1, 5]], fill: red, lw: 1.4}   # tail
+        - {ellipse: [0, -10, 7, 9.5], fill: parrot}
+        - translate: [-3, -14]               # wing (flaps while dancing)
+          rotate: "-0.2 + (sin(t * 22) * 0.6 if dancing else 0)"
+          ellipse: [0, 5, 3.6, 7]
+          fill: parrot_dark
+          lw: 1.4
+        - {circle: [1, "-22 + bob", 6.2], fill: parrot}
+        - path: "M 6 -24+bob C 10 -23+bob 10 -19+bob 7 -18+bob L 5.5 -21+bob Z"    # beak
+          fill: gold
+          lw: 1.4
+        - {circle: [2.5, "-23.5 + bob", 1.9], fill: white, stroke: none}
+        - {circle: [3, "-23.5 + bob", 1], fill: ink, stroke: none}
+  face:                                      # eye patch
+    - {line: [[-37, -99], [19, -91]], stroke: black, lw: 2.2}
+    - {ellipse: ["12 + look", -87, 7.5, 7], fill: black, lw: 1.2}
+  body:
+    - rect: [-22, -53, 44, 35]
+      r: 11
+      fill: {stripes: [white, stripe], step: 5, origin: -160}
+      lw: 2.2
+    - {rect: [-22, -26, 44, 5], r: 2, fill: sash, lw: 1.6}
+
+demand:
+  icon: treasure
+  color: yellow
+  draw:
+    - vars: {lift: "abs(sin(t * 3)) * 3", tw: "0.6 + 0.4 * sin(t * 6)"}
+      group:
+        - for: {k: [0, 1, 2]}                 # coins peeking out
+          circle: ["pick(k, 16, 24, 31)", "24 - lift * 0.6", 3.6]
+          fill: {pick: [yellow, orange, yellow], i: k}
+          lw: 1.4
+        - {rect: [7, 24, 34, 17], r: 3, fill: brown}
+        - {translate: [0, "-lift"], path: "M 7 24 C 7 12 41 12 41 24 Z", fill: brown}
+        - for: {x: [13, 35]}
+          line: [[x, 24], [x, 41]]
+          stroke: yellow
+          lw: 2.4
+        - {rect: [21, 25, 6, 7], r: 1.5, fill: yellow, lw: 1.4}
+        - {sparkle: [9, 10, "4 * tw"], fill: yellow, stroke: none}
+        - {sparkle: [40, 8, "3 * (1.6 - tw)"], fill: yellow, stroke: none}

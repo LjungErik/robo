@@ -1,0 +1,134 @@
+# Spider-Man: red and blue suit, web pattern, big white eyes. Thwips webs and,
+# now and then, zips up a web line to the very top of the screen and hangs
+# there for a while, legs dangling, before letting go and dropping back down.
+id: spiderman
+name: Spider-Man
+order: 210
+words: [spider man, spiderman, spidey, spider, peter parker]
+
+move: {gesture: thwip, mood: happy, seconds: 2.8, particles: web}
+walk: {speed: 1.4, lift: "abs(sin(phase * 0.5)) * 3"}       # springy steps
+
+travel:
+  - kind: hang
+    chance: 0.35
+    speed: 340             # thwip... zoom!
+    gesture: hang
+    hover_gesture: hang
+    stay: [4, 9]
+
+recolor:
+  body: "#D7263D"          # red suit
+  shade: "#2B4FB8"         # blue arms and legs
+  accent: "#C21F33"        # red gloves, boots, ears
+
+palette:
+  web: ["#6E0F1C", 0.7]
+  lens: {good: "#FFFFFF", evil: "#FF8C8C"}
+  blue: "#2B4FB8"
+  thread: "#FFFFFF"
+  cheese: "#FFD15C"
+  crust: "#E0A050"
+  pepperoni: "#E2474F"
+
+gestures:
+  thwip: {back: 0.4, front: "-1.45 + (0.25 if t % 0.8 < 0.1 else 0)"}   # wrist flick
+  hang: {back: "0.3 + sin(t * 2) * 0.12", front: -2.0}                   # one hand up on the line
+
+particles:
+  web:                     # little web splats flying forward
+    rate: 5
+    life: 0.6
+    at: ["f * 44", -47]
+    velocity: ["f * rand(90, 130)", "rand(-12, 8)"]
+    draw:
+      - repeat: 6
+        vars: {a: "i * pi / 3", r: "2 + k * 5"}
+        line: [[x, y], ["x + cos(a) * r", "y + sin(a) * r"]]
+        stroke: [white, "1 - k * 0.6"]
+        lw: 1.2
+      - {circle: [x, y, "1.6 + k * 1.5"], fill: white, stroke: ink, lw: 1}
+
+parts:
+  head:                    # mask: red, with a web pattern (no face screen)
+    - {rect: [-37, -112, 74, 58], r: 20, fill: body}
+    - clip: {rect: [-37, -112, 74, 58], r: 20}
+      group:
+        - repeat: 12                                   # spokes
+          vars: {a: "i * pi / 6"}
+          line: [[0, -84], ["cos(a) * 60", "-84 + sin(a) * 60"]]
+          stroke: web
+          lw: 1
+        - for: {r: [11, 21, 32, 44]}                   # rings
+          repeat: 12
+          vars: {a: "i * pi / 6", b: "(i + 1) * pi / 6"}
+          line: [["cos(a) * r", "-84 + sin(a) * r"], ["cos(b) * r", "-84 + sin(b) * r"]]
+          stroke: web
+          lw: 1
+    - {rect: [-37, -112, 74, 58], r: 20}               # outline again, over the web
+
+  face:                    # big white lenses that squint, widen and blink
+    - for: {side: [-1, 1]}
+      vars:
+        squint: "0.5 if mood in ('happy', 'sing', 'cat', 'laugh', 'focus') else 1"
+        wide: "1.25 if mood == 'surprised' else (0.25 if mood == 'sleep' else 1)"
+        h: "max(0.12, openness * squint * wide)"
+        tilt: "side * 0.15 if mood in ('evil', 'laugh', 'roar') else (-side * 0.12 if mood == 'sad' else 0)"
+      translate: ["side * 14 + look * 0.6", -89]
+      rotate: tilt
+      scale: [1, h]
+      path: "M side*-10 6 C side*-8 -6 side*4 -11 side*11 -6 C side*12 3 side*3 9 side*-10 6 Z"
+      fill: lens
+      lw: 4
+    - if: talk > 0.06                                  # the mask moves when he talks
+      ellipse: [0, -71, "3 + talk * 2", "0.8 + talk * 3"]
+      fill: [web, 0.6]
+      stroke: none
+
+layers:
+  body:
+    - {rect: [-22, -53, 44, 35], r: 11, fill: body, stroke: none}
+    - clip: {rect: [-22, -53, 44, 35], r: 11}           # blue lower half
+      group:
+        - {rect: [-30, -31, 60, 20], fill: blue, stroke: none}
+        - for: {x: [-14, 14]}
+          line: [[x, -53], ["x * 0.6", -31]]
+          stroke: web
+          lw: 1
+    - {rect: [-22, -53, 44, 35], r: 11}
+    - {ellipse: [0, -42, 2.4, 4], fill: ink, stroke: none}   # spider emblem
+    - {circle: [0, -47.5, 1.7], fill: ink, stroke: none}
+    - for: {side: [-1, 1]}
+      repeat: 4
+      vars: {y0: "-44.5 + i * 1.6"}
+      line: [["side * 1.5", y0], ["side * 5", "y0 - 2.5 + i * 1.3"], ["side * 7.5", "y0 - 1 + i * 2.4"]]
+      lw: 1
+  front_hand:
+    - if: "travel == 'hang' and airborne"               # the web line up to the top of the screen
+      rotate: -angle
+      line: [[0, 0], [0, -900]]
+      rope: [thread, 1.6, 3.2]
+    - if: "arms == 'thwip' and t % 0.8 > 0.12"          # thwip!
+      rotate: -angle
+      line: [[0, 0], [170, -8]]
+      rope: [thread, 1.3, 2.8]
+
+demand:
+  icon: pizza
+  color: orange
+  draw:
+    - translate: [24, 6]
+      rotate: "sin(t * 3) * 0.08"
+      group:
+        - translate: [-24, -6]
+          group:
+            - {path: "M 9 12 L 39 12 L 24 44 Z", fill: cheese, lw: 2}
+            - {rect: [6, 7, 36, 7], r: 3.5, fill: crust, lw: 2}
+            - {circle: [18, 19, 3.2], fill: pepperoni, lw: 1.4}
+            - {circle: [29, 19, 3], fill: pepperoni, lw: 1.4}
+            - {circle: [24, 29, 2.8], fill: pepperoni, lw: 1.4}
+            - vars: {k: "(t * 0.9) % 1"}                   # a cheese drip
+              ellipse: [21, "38 + k * 6", 1.6, "1.6 + k * 1.2"]
+              fill: [cheese, "1 - k"]
+              lw: 1.2
+    - {sparkle: [41, 34, "3.5 * (0.6 + 0.4 * sin(t * 6))"], fill: yellow, stroke: none}

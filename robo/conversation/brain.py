@@ -29,6 +29,8 @@ class Context:
     costume: Optional[str] = None                 # current character id
     evil: bool = False
     characters: Tuple[str, ...] = ()              # characters he may become
+    look: str = 'robo'                            # his everyday look (Settings → Look)
+    travel: Tuple[str, ...] = ()                  # ways he can get around now: fly, hang, teleport
     turn: int = 0                                 # how many things the user said so far
     task: Optional[str] = None                    # title of the task he's working on
     task_progress: Optional[float] = None         # 0..1 if known

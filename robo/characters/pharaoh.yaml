@@ -1,0 +1,93 @@
+# Walks like an Egyptian and demands a pyramid. Of himself.
+id: pharaoh
+name: Pharaoh
+order: 10
+words: [pharaoh, egypt, egyptian, king]
+
+move: {gesture: egypt, mood: happy, seconds: 4.0}
+walk: {speed: 0.8}
+antenna_y: -124
+
+gestures:
+  egypt: {back: "1.57 + sin(t * 6) * 0.45", front: "-1.57 + sin(t * 6) * 0.45",
+          head_x: "sin(t * 6) * 3.5"}
+
+palette:
+  gold: "#F5C542"
+  lapis: "#3D6FD9"
+  snake: "#E2474F"
+  sand: "#F3DCA8"
+  stone: "#E8B964"
+  robo_eye: "#7DF3FF"
+
+layers:
+  behind_head:                       # nemes headdress flaps
+    - for: {side: [-1, 1]}
+      path: "M side*30 -100 L side*40 -102 L side*47 -56 L side*33 -56 Z"
+      fill: {stripes: [gold, lapis], step: 4.5, origin: -160}
+      lw: 2.2
+  head:
+    - path: >-
+        M -41 -92 C -43 -120 -20 -126 0 -126 C 20 -126 43 -120 41 -92
+        L 34 -94 C 30 -104 18 -107 0 -107 C -18 -107 -30 -104 -34 -94 Z
+      fill: {stripes: [gold, lapis], step: 4.5, origin: -160}
+      lw: 2.2
+    - path: "M -34 -95 C -30 -105 -18 -108 0 -108 C 18 -108 30 -105 34 -95"
+      rope: [gold, 3.2, 6]
+    - {ellipse: [0, -111, 3.2, 4.6], fill: snake, lw: 1.8}     # the little cobra
+    - {circle: [0, -112, 1.2], fill: gold, stroke: none}
+  face:                              # false beard
+    - rect: [-4.5, -59, 9, 15]
+      r: 3.5
+      fill: {stripes: [gold, lapis], step: 3, origin: -160}
+      lw: 2.2
+  body:                              # golden collar
+    - path: "A 0 -54 21 0 pi N 0 -54 11 pi 0 Z"
+      fill: gold
+    - for: {r: [14.5, 18]}
+      arc: [0, -54, r, 0.12, "pi - 0.12"]
+      stroke: {pick: [lapis, snake], i: "0 if r < 16 else 1"}
+      lw: 2.2
+  front_hand:                        # the crook
+    - rotate: -angle                 # stand it upright whatever the arm does
+      group:
+        - path: "M 0 9 L 0 -24 A 5 -24 5 pi tau L 10 -21"
+          rope: [gold, 3.2, 6]
+        - for: {y: [-2, -10, -18]}
+          line: [[-1.6, y], [1.6, y]]
+          stroke: lapis
+          lw: 2
+
+demand:
+  icon: pyramid
+  color: yellow
+  draw:                              # blocks drop in row by row; it has Robo's face on it
+    - {circle: [40, 8, 4.5], fill: yellow, stroke: none}
+    - {rect: [2, 38, 44, 6], r: 3, fill: sand, lw: 2}
+    - vars: {cycle: "t % 4", rows: "min(4, int((t % 4) / 0.45))"}
+      group:
+        - for: {row: [0, 1, 2, 3]}
+          group:
+            - if: row < rows
+              repeat: "4 - row"
+              vars:
+                drop: "max(0, 1 - (cycle - row * 0.45) / 0.2) * 8"
+                n: "4 - row"
+              rect: ["24 - n * 4.5 + i * 9", "31 - row * 7 - drop", 9, 7]
+              r: 1.5
+              fill: stone
+              lw: 1.8
+        - if: rows == 4 and cycle > 1.9  # gold capstone, his antenna and face: the pyramid of ME
+          vars: {tw: "0.6 + 0.4 * sin(t * 7)"}
+          group:
+            - {poly: [[19.5, 10], [28.5, 10], [24, 3.5]], fill: yellow, lw: 1.8}
+            - {line: [[24, 3.5], [24, 0.5]], lw: 1.6}
+            - {circle: [24, 0, 1.8], fill: red, stroke: none}
+            - for: {ex: [20.5, 27.5]}
+              rect: ["ex - 1.4", 19, 2.8, 4]
+              r: 1.4
+              fill: robo_eye
+              stroke: none
+            - {arc: [24, 25.5, 2.2, "0.15 * pi", "0.85 * pi"], stroke: robo_eye, lw: 1.4}
+            - {sparkle: [8, 12, "4 * tw"], fill: yellow, stroke: none}
+            - {sparkle: [34, 18, "3 * (1.6 - tw)"], fill: yellow, stroke: none}

@@ -24,15 +24,16 @@ press **Apply**: he updates right away (no restart) and hops to say thanks.
 **Defaults** fills in the original values; they take effect when you press Apply.
 **Close** throws away changes you haven't applied.
 
-You can change: size, walking speed, naps, bubble time, update checks, evil mode
-and its delay, dressing up and how often, which characters he may become (hover
-a character to see its move), and logging.
+You can change: size, walking speed, naps, his **look** (who he is the rest of
+the time), bubble time, update checks, evil mode and its delay, dressing up and
+how often, which characters he may become (hover a character to see its move),
+and logging.
 
 Settings are saved in `~/.config/robo/settings.json`. You can also edit that
 file by hand: he notices within a couple of seconds and applies it.
 
-Command-line flags (`--scale`, `--evil-after`, `--dress-up-every`, `--no-updates`,
-`-v`) still work. They override the saved file for that run only. Pressing Apply
+Command-line flags (`--scale`, `--look`, `--evil-after`, `--dress-up-every`,
+`--no-updates`, `-v`) still work. They override the saved file for that run only. Pressing Apply
 saves whatever is in the window, including values that came from flags.
 
 ## Evil mode 😈
@@ -68,13 +69,51 @@ does his signature move and keeps making demands in his speech bubble.
 | 🏴‍☠️ Pirate | dances a jig with the parrot on his shoulder | treasure |
 | 🦸 Superhero | flies up, fist first, cape trailing | a kitten to rescue |
 | 🐱 Kitty | bats at a ball of yarn, `:3`, little hearts | a fish |
+| 🦾 Iron Man | repulsor blast; **flies around the screen** on boot jets and hovers | shawarma |
+| 🕷️ Spider-Man | thwips webs; **zips up to the top of the screen** and hangs there | pizza |
+| 🧤 Thanos | snaps his fingers (dust drifts away); **teleports** across the screen | the six stones |
+| 🦸 (Superhero) | also takes off and flies somewhere now and then | |
 
 - Change how often, or which characters he may become, in **Settings**.
 - Right-click → **Dress up** to pick a random character now.
 - He doesn't dress up while he's evil, but if you leave him alone while he's dressed up you get
   an evil viking (or pharaoh, or…).
-- To add a character: draw its outfit in `robo/render/costumes.py`, add its demand
-  icon to `robo/render/icons.py`, and list it in `robo/core/characters.py`.
+- To add a character, write a character file (see below). No code needed.
+
+## His look, and getting around 🚀
+
+**Settings → Robo → Look** picks who he is the rest of the time: plain Robo, or any
+character (`--look ironman` for one run). Some characters don't just walk:
+
+- **Iron Man** takes off now and then, flies to a random spot anywhere on your
+  screen, hovers there, maybe flies on, and lands. Let go of him in mid-air and
+  he just hovers.
+- **Spider-Man** zips up a web line to the top of the screen, hangs there with his
+  legs dangling, then lets go and drops back down.
+- **Thanos** snaps his fingers, vanishes in a puff of smoke and reappears
+  somewhere else.
+
+Right-click → **Fly around** (or say *"fly around!"*) makes him go now. He always
+lands to work on a task, to turn evil, or when he changes into someone who can't fly.
+
+## Your own characters 🎨
+
+What Robo and every character look like, and how they behave, lives in
+**character files** (YAML) in `robo/characters/`. The code is only an
+interpreter for them, so anyone can design their own version of Robo:
+
+1. Copy a file (`robo/characters/pharaoh.yaml` is a small costume,
+   `robo.yaml` is the whole robot) to `~/.config/robo/characters/` and edit it.
+   A file with the same `id` as a built-in one replaces it.
+2. Robo picks up changes while he runs. New characters appear in Settings.
+3. Check it: `python3 -m robo --check ~/.config/robo/characters/mine.yaml` reports
+   mistakes and saves a preview picture of every pose next to the file.
+
+A file can recolour the robot, add outfit layers (hats, capes, armour), replace
+body parts, add arm gestures, particles, a signature move, the icon he demands,
+the words you can use to ask for him, and `travel` abilities (fly, hang, teleport).
+Every number can be a small expression like `"sin(t * 3) * 6"` for animation.
+The format is described in [`robo/characters/README.md`](robo/characters/README.md).
 
 ## Talking 🗣️
 
@@ -86,7 +125,8 @@ asking him *"are you evil?"*.
 A single click while he's chatting hushes him.
 
 Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
-*"dress up as a pirate"*, *"dance!"*, *"sing a song"*, *"you're so cute"*,
+*"dress up as a pirate"*, *"turn into iron man"*, *"fly around!"*, *"dance!"*,
+*"sing a song"*, *"you're so cute"*,
 *"take a nap"*, *"do a task"*, *"abort task"*, *"goodbye"*.
 
 - While he listens his bubble shows a 🎤, and while he thinks a ⚙️.
@@ -133,7 +173,7 @@ How it works: `robo/tasks/` is pure logic. `Task` (`base.py`) has the lifecycle
 `max_parallel` tasks at once (1 today), queues the rest, and pauses for each
 interruption reason (`'conversation'`, `'held'`). `catalog.py` lists the kinds of
 task. `robo/core/hacker.py` decides how he looks (outfit, sitting, typing). Its
-outfit is in `WORK_OUTFITS` in `robo/render/costumes.py`.
+outfit is the character file `robo/characters/hacker.yaml`.
 
 To add a real task:
 1. Write its job in `robo/sandbox/worker/jobs.py`. This code runs inside the sandbox.
@@ -180,7 +220,7 @@ from inside a real sandbox. Run it against any new backend.
 | Left-click    | Pat him (hearts!), dismiss the bubble, end his costume, or hush him |
 | Double-click  | Talk to him |
 | Drag          | Pick him up; he falls back down when you let go |
-| Right-click   | Menu: wave, do / abort a task, nap / wake, dress up, talk, settings, show all icons, quit |
+| Right-click   | Menu: wave, do / abort a task, nap / wake, dress up, fly around (if he can), talk, settings, show all icons, quit |
 
 ## What triggers a bubble
 
@@ -225,13 +265,20 @@ robo/
   sandbox/                portable sandbox parts: Permissions, Workspace + change review,
                           Broker (downloads), Approver; worker/ runs inside the sandbox
   events.py               Event, list of KINDS, classify() for notification text
+  characters/             CHARACTER FILES: robo.yaml (the robot), costumes, hacker.yaml;
+                          README.md describes the format
+  design/                 reads them: expr.py (safe expressions), loader.py (one file),
+                          registry.py (all files, user folder, hot reload, Designs),
+                          model.py (Character, Move, Travel), check.py (--check)
   core/                   the robot itself, pure Python (no GUI or OS calls)
     companion.py          ties everything together; the only thing the platform talks to
-    body.py               position and movement: idle / walk / sleep / drag / fall
+    body.py               position and movement: idle / walk / sleep / drag / fall /
+                          fly / hover / hang
+    travel.py             getting around without walking: fly, hang, teleport
     face.py               blinking, glancing, timed expressions, hearts
     personality.py        what he decides to do and how he reacts  <- tweak his character here
     evil.py               when to turn evil / good, colour blend, glitch
-    characters.py         the dress-up characters: move, demand, walk style
+    characters.py         the characters from the files: costumes, looks, demands
     wardrobe.py           when he dresses up, the poof, signature-move timing
     hacker.py             hacker mode while he has a task: outfit on/off, sitting, typing
     effects.py            particles (numbers, notes, sparks)
@@ -240,9 +287,10 @@ robo/
     pose.py               state -> Pose (what one frame should look like)
     layout.py, geometry.py  window size, bubble position, click areas
   render/                 Cairo drawing (portable)
-    scene.py              one full frame; robot.py the robot; icons.py the icons;
-                          costumes.py the outfits; effects.py particles and poof;
-                          anatomy.py body-part positions; shapes.py colours and helpers
+    scene.py              one full frame; robot.py the rig (draws a Design's parts and
+                          layers); interpreter.py turns file drawings into Cairo calls;
+                          icons.py the icons; effects.py particles and poof;
+                          shapes.py colours and helpers
   platform/
     base.py               the contract a port implements
     linux/                GTK window, GLib loop, D-Bus notifications, battery, network,
@@ -251,13 +299,14 @@ robo/
                           task sandbox (bubblewrap) and permission dialogs
     headless.py           off-screen fake platform used by the tests
 tests/test_robot.py       python3 -m unittest discover -s tests
+tests/test_characters.py  character files, user characters, flying / hanging / teleporting
 tests/test_sandbox.py     sandbox rules, checked inside a real sandbox
 ```
 
 Data flows one way: an **EventSource** emits an `Event`, then the `Companion`
 updates `Body`, `Face`, `EvilMode` and `BubbleQueue`, then `build_pose()`
 produces a `Pose`, then `render` draws it into the window the **WindowHost**
-gives it.
+gives it, using the `Design` the character files describe for his look and outfit.
 
 ## Porting to another OS
 

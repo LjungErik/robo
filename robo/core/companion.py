@@ -19,13 +19,14 @@ from robo.tasks import TaskEnvironment, TaskManager, make_task
 from . import layout, personality
 from .body import Body
 from .bubble import BubbleQueue
+from . import characters
 from .evil import EvilMode
-from .characters import CHARACTERS
 from .effects import Effects
-from .face import WAVE, Face
+from .face import LOOK_MOVE, WAVE, Face
 from .hacker import HackerMode
 from .pose import build_pose
 from .talk import Conversation
+from .travel import Traveller
 from .wardrobe import Wardrobe
 
 log = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ class Companion:
         self.wardrobe = Wardrobe(settings.effective_dress_up_every, now, self.rng,
                                  allowed=settings.characters)
         self.effects = Effects(self.rng)
+        self.travel = Traveller(self.rng)
+        self.look = settings.look             # his everyday look (base design or character)
         self.tasks = TaskManager()
         self.task_env = TaskEnvironment()       # no sandbox = no tasks (set by the app)
         self.hacker = HackerMode()
@@ -64,6 +67,11 @@ class Companion:
         self._last_pos = None
         self._last_bubble_visible = None
         self._next_screen_check = 0.0
+
+    @property
+    def look_character(self):
+        """The Character he looks like when not dressed up (Robo by default)."""
+        return characters.get(self.look) or characters.get(characters.DEFAULT_LOOK)
 
     # ------------------------------------------------------------ setup
     def attach(self, host: WindowHost):
@@ -92,6 +100,9 @@ class Companion:
         if self.evil.set_after(settings.effective_evil_after, now) == 'good':
             personality.on_turned_good(self, now)
         self.wardrobe.configure(settings.effective_dress_up_every, settings.characters, now)
+        if settings.look != self.look:
+            self.look = settings.look
+            self.travel.check(self)              # e.g. no longer Iron Man: come down
         self.conversation.configure(settings)
         self._sync_window()
         personality.on_settings_applied(self, now)
@@ -147,6 +158,8 @@ class Companion:
             personality.next_action(self, now)
         elif happened == 'landed':
             personality.on_landed(self, now)
+        elif happened == 'arrived':
+            personality.on_arrived(self, now)
         elif happened == 'woke':
             personality.on_woke(self, now)
 
@@ -155,6 +168,7 @@ class Companion:
             personality.on_bubble_shown(self, shown, now)
 
         self._update_costume(now, dt)
+        self._update_travel(now, dt)
         self._update_tasks(now, dt)
         self.conversation.update(now)
         if self._pending_click is not None and now - self._pending_click > DOUBLE_CLICK_SECONDS:
@@ -177,11 +191,29 @@ class Companion:
         character = self.wardrobe.current
         if character and character.particles and self.wardrobe.doing_move(now):
             self.effects.emit(character.particles, now, dt, self.body.facing)
+        elif character is None and self.face.active(LOOK_MOVE, now):
+            look = self.look_character
+            if look is not None and look.particles:
+                self.effects.emit(look.particles, now, dt, self.body.facing)
         self.effects.update(now)
+
+    def _update_travel(self, now, dt):
+        change = self.travel.update(self, now, dt)
+        if change:
+            log.info('teleport: %s', change)
+            personality.on_teleport(self, change, now)
+        a = self.travel.ability
+        if a is not None and a.particles and (self.body.airborne or self.travel.teleporting(now)):
+            self.effects.emit(a.particles, now, dt, self.body.facing)
 
     def dress_up(self, character_id=None):
         if not self.busy_working:              # no costumes over the hacker outfit
-            self.wardrobe.dress_up(self.clock(), character_id)
+            self.wardrobe.dress_up(self.clock(), character_id, exclude=(self.look,))
+
+    def characters_reloaded(self):
+        """Someone edited a character file: use the new version right away."""
+        self.wardrobe.refresh()
+        self.travel.check(self)
 
     # ------------------------------------------------------------ tasks
     @property
@@ -305,6 +337,8 @@ class Companion:
         p, self._press = self._press, None
         if self.body.state == 'drag':
             self.body.drop(now, self.bounds)
+            if self.body.state == 'fall':
+                self.travel.on_dropped(self, now)
         elif p['in_bubble'] and not self.conversation.active:
             self.bubbles.dismiss(now)
         elif self._pending_click is not None:          # second click: let's talk!
@@ -342,7 +376,7 @@ class Companion:
             if self.body.state == 'sleep':
                 items.append(MenuItem('☀️  Wake up', lambda: self.body.wake(now())))
             else:
-                items.append(MenuItem('😴  Take a nap', lambda: self.body.sleep(now(), 60)))
+                items.append(MenuItem('😴  Take a nap', lambda: personality.nap(self, now(), 60)))
         if self.busy_working:
             pass                                  # no costumes while hacking
         elif self.wardrobe.current:
@@ -350,6 +384,10 @@ class Companion:
                                   lambda: personality.on_costume_clicked(self, now())))
         else:
             items.append(MenuItem('🎭  Dress up', self.dress_up))
+        if not self.busy_working and self.travel.abilities(self):
+            label = {'fly': '🚀  Fly around', 'hang': '🕸️  Swing up',
+                     'teleport': '✨  Teleport'}.get(self.travel.abilities(self)[0].kind)
+            items.append(MenuItem(label, lambda: self.travel.start_kind(self, '', now())))
         if self.conversation.active:
             items.append(MenuItem('🤐  Stop talking', self.conversation.stop))
         else:

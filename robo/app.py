@@ -6,11 +6,13 @@ applied to the running robot immediately.
 """
 import argparse
 import logging
+import os
 import sys
 
 from robo.config import Settings
 from robo.conversation import RuleBrain
 from robo.core.companion import Companion
+from robo.design import REGISTRY
 from robo.platform import load_platform
 from robo.sandbox import Workspace
 from robo.settings_store import SettingsStore
@@ -38,9 +40,17 @@ def parse_args(argv=None):
                     help='turn evil after this long without keyboard/mouse input (0 = never)')
     ap.add_argument('--dress-up-every', type=float, metavar='SECONDS',
                     help='about how often he dresses up as a character (0 = never)')
+    ap.add_argument('--look', metavar='ID',
+                    help='what he looks like (robo, ironman, spiderman, thanos, ...)')
+    ap.add_argument('--check', nargs='*', metavar='FILE',
+                    help='check character files (all of them if none given) and exit')
     ap.add_argument('--platform', default=None, help=argparse.SUPPRESS)   # e.g. 'headless'
     a = ap.parse_args(argv)
     overrides = {}
+    if a.check is not None:
+        overrides['check'] = a.check
+    if a.look:
+        overrides['look'] = a.look
     if a.scale is not None:
         overrides['scale'] = a.scale
     if a.verbose:
@@ -98,6 +108,7 @@ class RoboApp:
         sched.every(1 / TICKS_PER_SECOND, self.robot.tick)
         if store is not None:
             sched.every(FILE_CHECK_SECONDS, self._check_settings_file)
+            sched.every(FILE_CHECK_SECONDS, self._check_character_files)
         if settings.demo:
             sched.after(DEMO_DELAY, self.robot.demo)
         host.show()
@@ -121,10 +132,23 @@ class RoboApp:
             source.apply_settings(settings)
         log.info('settings applied: %s', settings.to_dict())
 
+    def _check_character_files(self):
+        """Edited a character file? He changes right away (handy while designing one)."""
+        if REGISTRY.reload_if_changed():
+            log.info('character files changed, reloaded')
+            self.settings = self.settings.with_changes()       # re-check look / characters
+            self.robot.characters_reloaded()
+            self.robot.apply_settings(self.settings)
+
     def _check_settings_file(self):
         if self.store.changed_on_disk():
             log.info('settings file changed, reloading')
             self.apply(self.store.load(), save=False)
+
+
+def characters_dir(platform):
+    """Where your own character files go (~/.config/robo/characters on Linux)."""
+    return os.path.join(platform.config_dir(), 'characters')
 
 
 def build_companion(settings, platform):
@@ -136,10 +160,17 @@ def main(argv=None):
     overrides, platform_name = parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(message)s',
                         datefmt='%H:%M:%S')
+    if 'check' in overrides:
+        from robo.design.check import check
+        files = overrides.pop('check')
+        if not files:                          # everything, including your own folder
+            REGISTRY.add_directory(characters_dir(load_platform('headless')))
+        return 1 if check(files) else 0
     platform = load_platform(platform_name)
     if not platform.acquire_single_instance():
         print('Robot companion is already running.')
         return 0
+    REGISTRY.add_directory(characters_dir(platform))       # your own characters
     store = SettingsStore(platform.config_dir())
     settings = store.load().with_changes(**overrides)
     _set_log_level(settings)

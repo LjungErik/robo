@@ -1,0 +1,75 @@
+# Plays the lyre while notes float up; would like grapes, peeled.
+id: roman
+name: Roman emperor
+order: 60
+words: [roman, emperor, caesar]
+
+move: {gesture: lyre, mood: sing, seconds: 4.5, particles: notes}
+walk: {speed: 0.7}
+
+gestures:
+  lyre: {back: "-0.8 + sin(t * 12) * 0.18", front: 0.95, place: front}
+
+palette:
+  toga: "#FBF6EA"
+  purple: "#8B4FD8"
+  cape: "#D93B48"
+  gold: "#F5C542"
+  leaf: "#6CC56B"
+  brown: "#A8693A"
+  grape: "#9B5DE5"
+
+particles:
+  notes:
+    rate: 2.2
+    life: 1.8
+    glyph: note
+    at: ["f * 20", -50]
+    velocity: ["f * rand(14, 26)", "rand(-28, -16)"]
+
+layers:
+  behind:
+    - {path: "M -19 -52 C -26 -40 -30 -24 -30 -14 L 30 -14 C 30 -24 26 -40 19 -52 Z", fill: cape}
+  body:
+    - {poly: [[-21, -53], [-9, -53], [22, -30], [22, -19], [14, -18]], fill: toga}
+    - {line: [[-9, -53], [22, -30]], stroke: purple}
+    - {circle: [-15, -50, 2.8], fill: gold, lw: 1.5}
+  head:                       # laurel wreath
+    - repeat: 11
+      vars: {a: "(205 + i * 13) * pi / 180"}
+      translate: ["cos(a) * 35", "-80 + sin(a) * 35"]
+      rotate: "a + pi / 2 + (0.6 if i % 2 else -0.6)"
+      ellipse: [0, 0, 6, 2.8]
+      fill: leaf
+      lw: 1.5
+  front_hand:                 # lyre
+    - rotate: -angle
+      group:
+        - for: {side: [-1, 1]}
+          path: "M side*6 0 C side*10 -6 side*10 -12 side*5 -17"
+          rope: [gold, 2.6, 4.8]
+        - {line: [[-7, -14], [7, -14]], rope: [gold, 2.4, 4.4]}
+        - for: {x: [-2.5, 0, 2.5]}
+          line: [[x, -1], [x, -14]]
+          lw: 0.9
+        - {rect: [-7, -2, 14, 4.5], r: 2, fill: gold, lw: 1.8}
+
+demand:
+  icon: grapes
+  color: purple
+  draw:
+    - translate: [24, 6]
+      rotate: "sin(t * 3) * 0.1"
+      group:
+        - translate: [-24, -6]
+          group:
+            - {line: [[24, 5], [24, 12]], stroke: brown}
+            - {translate: [31, 9], rotate: -0.5, ellipse: [0, 0, 7, 3.5], fill: green}
+            - for: {row: [0, 1, 2, 3]}
+              vars: {n: "4 - row"}
+              group:
+                - repeat: n
+                  vars: {cx: "24 - (n - 1) * 3.6 + i * 7.2", cy: "16 + row * 6.5"}
+                  group:
+                    - {circle: [cx, cy, 4.3], fill: grape, lw: 1.8}
+                    - {circle: ["cx - 1.4", "cy - 1.4", 1.1], fill: ["#FFFFFF", 0.7], stroke: none}

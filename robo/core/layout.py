@@ -42,4 +42,5 @@ def walk_bounds(workarea, scale):
     _, h = window_size(scale)
     return Bounds(min_x=workarea.x + margin,
                   max_x=workarea.x + workarea.w - margin,
-                  ground_y=workarea.y + workarea.h - h)
+                  ground_y=workarea.y + workarea.h - h,
+                  min_y=workarea.y)

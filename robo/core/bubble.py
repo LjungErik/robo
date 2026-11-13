@@ -4,7 +4,7 @@ from typing import Optional
 
 from robo.events import FALLBACK_KIND, KINDS, SYSTEM_KINDS
 
-from .characters import DEMAND_ICONS
+from . import characters
 
 DEFAULT_SECONDS = 6.0
 POP_IN, POP_OUT = 0.35, 0.22     # animation times
@@ -13,7 +13,12 @@ DEDUP_SECONDS = 60
 MAX_QUEUE = 10
 TALK_ICONS = frozenset({'mic', 'thinking'})      # shown during conversations
 TASK_ICONS = frozenset({'task_done'})            # see robo.core.personality
-BUBBLE_KINDS = frozenset(KINDS) | DEMAND_ICONS | TALK_ICONS | TASK_ICONS  # every bubble icon
+FIXED_KINDS = frozenset(KINDS) | TALK_ICONS | TASK_ICONS
+
+
+def bubble_kinds():
+    """Every icon a bubble can show (characters' demands come from their files)."""
+    return FIXED_KINDS | characters.demand_icons()
 
 
 def ease_out_back(x):
@@ -71,7 +76,7 @@ class BubbleQueue:
         """Queue an icon. Returns 'queued', 'bumped' (count +1 on the open
         bubble), 'merged' (count +1 on a waiting one) or 'ignored'.
         front=True jumps the queue and closes whatever is showing now."""
-        if kind not in BUBBLE_KINDS:
+        if kind not in FIXED_KINDS and kind not in characters.demand_icons():
             kind = FALLBACK_KIND
         if dedup and kind in SYSTEM_KINDS:
             if now - self._last_seen.get(kind, -1e9) < DEDUP_SECONDS:

@@ -1,3 +1,5 @@
+import sys
+
 from robo.app import main
 
-main()
+sys.exit(main())

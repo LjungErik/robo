@@ -1,0 +1,93 @@
+# Bats at a ball of yarn, :3 face, little hearts; asks for a fish.
+id: kitty
+name: Kitty
+order: 120
+words: [kitty, cat, kitten]
+
+move: {gesture: paw, mood: cat, seconds: 3.5, particles: hearts}
+
+gestures:
+  paw: {back: 0.25, front: "-0.9 + sin(t * 9) * 0.35"}
+
+palette:
+  fur: "#FFB25B"
+  fur_dark: "#E08A2E"
+  pink: "#FF9CC2"
+  belly: "#FFF1DE"
+  yarn: "#FF7AB6"
+  yarn_dark: "#D94F92"
+
+particles:
+  hearts:
+    rate: 1.6
+    life: 1.5
+    glyph: heart
+    at: ["f * rand(14, 30)", -46]
+    velocity: ["f * rand(0, 10)", "rand(-30, -18)"]
+
+layers:
+  behind:                                     # swishy tail
+    - vars: {swish: "sin(t * 3) * 6"}
+      group:
+        - path: "M -18 -26 C -34 -26 -40 -40+swish*0.3 -34+swish -56"
+          rope: [fur, 6, 9.5]
+        - {circle: ["-34 + swish", -56, 3.6], fill: fur_dark, stroke: none}
+  body:                                       # onesie
+    - {rect: [-22, -53, 44, 35], r: 11, fill: fur}
+    - {ellipse: [0, -34, 11, 10], fill: belly, stroke: none}
+    - for: {x: [-12, 12]}
+      line: [["x - 3", -50], ["x + 3", -47]]
+      stroke: fur_dark
+      lw: 2
+  head:                                       # ears
+    - for: {side: [-1, 1]}
+      group:
+        - {poly: [["side * 31", -103], ["side * 25", -126], ["side * 11", -110]], fill: fur}
+        - poly: [["side * 27", -108], ["side * 24.5", -120], ["side * 16", -111]]
+          fill: pink
+          stroke: none
+  face:
+    - vars: {lx: "look * 0.6"}
+      group:
+        - for: {side: [-1, 1]}                # whiskers
+          group:
+            - for: {dy: [-3.5, 0, 3.5]}
+              line: [["side * 19 + lx", "-77 + dy * 0.4"], ["side * 27 + lx", "-77 + dy"]]
+              stroke: ["#FFFFFF", 0.75]
+              lw: 1.2
+        - {poly: [["-2.2 + lx", -81], ["2.2 + lx", -81], [lx, -78.8]], fill: pink, stroke: none}
+  front:                                      # ball of yarn
+    - if: arms == 'paw'
+      vars: {hop: "abs(sin(t * 9)) * 4", cx: 33, cy: "-9 - abs(sin(t * 9)) * 4"}
+      group:
+        - {circle: [cx, cy, 7], fill: yarn}
+        - translate: [cx, cy]
+          rotate: "t * 4"
+          group:
+            - for: {a: [-0.6, 0, 0.6]}
+              arc: [0, 0, 5.5, "a + 0.6", "a + 2.4"]
+              stroke: yarn_dark
+              lw: 1.2
+        - path: "M cx-6 cy+3 C cx-14 cy+9 cx-20 cy+6 cx-26 cy+9+hop"
+          stroke: yarn
+          lw: 1.6
+
+demand:
+  icon: fish
+  color: blue
+  draw:
+    - translate: [22, 24]
+      rotate: "sin(t * 6) * 0.12"
+      group:
+        - translate: [-22, -24]
+          group:
+            - {poly: [[32, 24], [42, 16], [41, 32]], fill: blue}     # tail
+            - {ellipse: [21, 24, 14, 9], fill: sky}
+            - {arc: [26, 24, 7, "pi * 0.6", "pi * 1.4"], stroke: blue, lw: 1.6}
+            - {circle: [14, 22, 2.6], fill: white, lw: 1.4}
+            - {circle: [13.5, 22, 1.1], fill: ink, stroke: none}
+    - repeat: 3
+      vars: {k: "(t * 0.7 + i / 3) % 1"}
+      circle: ["6 + i * 2", "18 - k * 14", "1.2 + k * 1.4"]
+      stroke: blue
+      lw: 1.2

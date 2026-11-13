@@ -10,25 +10,39 @@ file will later be replaced by an LLM-backed Brain.
 import random
 import re
 
-from robo.core.characters import CHARACTERS
+from robo.core import characters
+from robo.design import REGISTRY
 
 from .brain import Brain, Context, Reply
 
-# Words people use for each character (speech recognition hears plain words).
-CHARACTER_WORDS = {
-    'pharaoh': ('pharaoh', 'egypt', 'egyptian', 'king'),
-    'cowboy': ('cowboy', 'cow boy', 'sheriff'),
-    'viking': ('viking',),
-    'accountant': ('accountant', 'accounting'),
-    'mechanic': ('mechanic',),
-    'roman': ('roman', 'emperor', 'caesar'),
-    'chef': ('chef', 'cook'),
-    'astronaut': ('astronaut', 'space', 'spaceman'),
-    'wizard': ('wizard', 'magician', 'witch'),
-    'pirate': ('pirate',),
-    'superhero': ('superhero', 'super hero', 'hero'),
-    'kitty': ('kitty', 'cat', 'kitten'),
+DRESS_WORDS = ('dress up', 'dress', 'costume', 'become', 'turn into', 'outfit')
+TRAVEL_WORDS = {
+    'fly': ('fly', 'fly around', 'take off', 'flying'),
+    'hang': ('swing', 'web', 'climb', 'hang'),
+    'teleport': ('teleport', 'snap', 'snap your fingers', 'vanish'),
 }
+
+
+def character_words():
+    """character id -> the words people use for it (`words:` in its file)."""
+    return {cid: characters.get(cid).words or (characters.get(cid).title.lower(),)
+            for cid in characters.costume_ids()}
+
+
+class _CharacterPattern:
+    """Matches the dress-up words plus every character's words; rebuilt when
+    the character files change."""
+
+    def __init__(self):
+        self._version, self._re = None, None
+
+    def search(self, text):
+        if self._version != REGISTRY.version or self._re is None:
+            words = [w for ws in character_words().values() for w in ws]
+            self._re = _words(*DRESS_WORDS, *words)
+            self._version = REGISTRY.version
+        return self._re.search(text)
+
 
 JOKES = (
     'Why did the robot go on holiday? To recharge his batteries!',
@@ -75,9 +89,8 @@ class RuleBrain(Brain):
             ('joke', _words('joke', 'jokes', 'funny', 'make me laugh'), self.joke),
             ('undress', _words('take it off', 'take off', 'undress', 'be yourself',
                                'normal', 'no costume', 'stop dressing'), self.undress),
-            ('dress_up', _words('dress up', 'dress', 'costume', 'become', 'turn into',
-                                'outfit', *[w for ws in CHARACTER_WORDS.values() for w in ws]),
-             self.dress_up),
+            ('dress_up', _CharacterPattern(), self.dress_up),
+            ('travel', _words(*[w for ws in TRAVEL_WORDS.values() for w in ws]), self.travel),
             ('dance', _words('dance', 'dancing', 'boogie', 'move', 'moves', 'party'),
              self.dance),
             ('sing', _words('sing', 'song', 'music'), self.sing),
@@ -112,7 +125,7 @@ class RuleBrain(Brain):
         if ctx.evil:
             return Reply("Oh! You caught me plotting. I mean... hi! What's up?", 'surprised')
         if ctx.costume:
-            who = CHARACTERS[ctx.costume].title.lower()
+            who = characters.title(ctx.costume).lower()
             return Reply(f'Beep boop! The {who} is listening. What can I do for you?',
                          'happy', action='wave')
         return Reply(self._pick('Beep boop! I am listening!', 'Hi there! What is up?',
@@ -232,12 +245,17 @@ class RuleBrain(Brain):
         if ctx.task:
             return Reply("I can't change clothes now, I'm in the middle of a task! "
                          'Say abort task if you want me to stop.', 'focus')
-        wanted = next((cid for cid, words in CHARACTER_WORDS.items()
-                       if _words(*words).search(text)), None)
+        # longest phrase first, so "iron man" wins over "man"
+        found = [(len(w), cid) for cid, words in character_words().items() for w in words
+                 if _words(w).search(text)]
+        wanted = max(found)[1] if found else None
         if wanted is None:
-            pool = list(ctx.characters) or list(CHARACTERS)
+            known = characters.costume_ids()
+            pool = [c for c in ctx.characters if c in known and c != ctx.look] or list(known)
+            if not pool:
+                return Reply("Hmm, I don't have any costumes right now!", 'sad')
             wanted = self.rng.choice(pool)
-        who = CHARACTERS[wanted].title.lower()
+        who = characters.title(wanted).lower()
         if ctx.costume == wanted:
             return Reply(f'I am already the {who}! Look at me!', 'happy', action='dance')
         article = 'an' if who[0] in 'aeiou' else 'a'
@@ -252,6 +270,20 @@ class RuleBrain(Brain):
         if not ctx.costume:
             return Reply('This is just me! No costume. Beep.', 'happy')
         return Reply('Okay, back to plain old Robo!', 'happy', action='undress')
+
+    def travel(self, text, ctx):
+        wanted = next((kind for kind, words in TRAVEL_WORDS.items()
+                       if _words(*words).search(text)), None)
+        if ctx.task:
+            return Reply("I have to stay at my laptop until my task is done!", 'focus')
+        if not ctx.travel:
+            return Reply(self._pick("I wish I could! Maybe if I dress up as Iron Man...",
+                                    "My little legs will have to do. Beep!"), 'sad')
+        kind = wanted if wanted in ctx.travel else ctx.travel[0]
+        line = {'fly': 'Up, up and away! Whoosh!',
+                'hang': 'Thwip! See you up there!',
+                'teleport': 'Watch closely. *snap*'}[kind]
+        return Reply(line, 'happy', action='travel', action_arg=kind, end=True)
 
     def dance(self, text, ctx):
         return Reply(self._pick('Watch my moves! Beep, boop, beep!',

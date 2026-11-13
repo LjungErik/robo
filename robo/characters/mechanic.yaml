@@ -1,0 +1,66 @@
+# "Fixes" himself by bonking his own head with a wrench; asks for an oil can.
+id: mechanic
+name: Mechanic
+order: 50
+words: [mechanic]
+
+move: {gesture: fix, mood: wince, seconds: 2.5, particles: sparks}
+antenna_y: -121
+
+gestures:
+  fix: {back: 0.25, front: "-2.85 + abs(sin(t * 8)) * 0.35", place: over_head}
+
+palette:
+  cap: "#E5484D"
+  denim: "#5B8BE0"
+  denim_dark: "#4673C4"
+  gold: "#F5C542"
+  steel: "#C3CCDD"
+  smudge: ["#332E29", 0.55]
+  oil: "#D9902B"
+
+particles:
+  sparks:                    # off his head where the wrench lands
+    rate: 9
+    life: 0.45
+    glyph: spark
+    at: ["f * 36", -86]
+    velocity: ["f * rand(5, 40)", "rand(-40, 10)"]
+
+layers:
+  head:                      # cap, worn backwards
+    - {ellipse: [-34, -108, 13, 3.8], fill: cap}
+    - {path: "M -34 -104 C -34 -127 34 -127 34 -104 Z", fill: cap}
+    - {circle: [10, -113, 3.6], fill: white, lw: 1.5}
+  face:                      # oil smudge
+    - {ellipse: [-19, -70, 5, 2.4], fill: smudge, stroke: none}
+    - {circle: [-13, -67, 1.4], fill: smudge, stroke: none}
+  body:                      # overalls
+    - for: {side: [-1, 1]}
+      line: [["side * 11", -49], ["side * 17", -54]]
+      rope: [denim, 3, 5.4]
+    - {rect: [-13, -50, 26, 24], r: 4, fill: denim}
+    - {rect: [-6, -44, 12, 8], r: 2, fill: denim_dark, lw: 1.6}
+    - {line: [[3, -44], [3, -49]], stroke: gold, lw: 2}
+    - for: {x: [-9.5, 9.5]}
+      circle: [x, -47, 1.8]
+      fill: gold
+      stroke: none
+  front_hand:                # held along the arm, so lifting the arm swings it at his own head. Bonk.
+    - {line: [[0, 2], [0, 15]], rope: [steel, 3.4, 6]}
+    - {circle: [0, 18, 4.8], fill: steel}
+    - {circle: [0, 18.5, 1.9], fill: ink, stroke: none}
+
+demand:
+  icon: oilcan
+  color: red
+  draw:
+    - {line: [[28, 27], [41, 14]], rope: [grey, 3, 6]}                 # spout
+    - {arc: [9, 30, 6, "pi / 2", "pi * 1.5"], rope: [red, 2.6, 5.6]}   # handle
+    - {poly: [[13, 23], [16, 16], [22, 16], [25, 23]], fill: red}
+    - {rect: [8, 22, 22, 19], r: 4, fill: red}
+    - {circle: [19, 31, 4], fill: yellow, lw: 1.6}
+    - vars: {k: "(t * 1.1) % 1", dy: "16 + k * k * 24"}               # drip... drip...
+      path: "M 41 dy-3.5 C 43.5 dy 43.5 dy+2.5 41 dy+2.5 C 38.5 dy+2.5 38.5 dy 41 dy-3.5 Z"
+      fill: oil
+      lw: 1.4

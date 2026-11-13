@@ -1,0 +1,77 @@
+# Waves his wand, sparkles everywhere; demands a bubbling potion.
+id: wizard
+name: Wizard
+order: 90
+words: [wizard, magician, witch]
+
+move: {gesture: spell, mood: focus, seconds: 3.0, particles: magic}
+walk: {speed: 0.8}
+antenna_y: -158
+
+gestures:
+  spell: {back: 0.3, front: "-2.4 + sin(t * 7) * 0.35", place: over_head}
+
+palette:
+  robe: "#7B5CD6"
+  beard: "#F7F7FA"
+  gold: "#F5C542"
+  dark_brown: "#7A4A28"
+  bubble: "#D9B8FF"
+  brown: "#A8693A"
+
+particles:
+  magic:                       # colourful sparkles out of the wand tip
+    rate: 12
+    life: 0.8
+    glyph: magic
+    at: ["f * 34", -84]
+    velocity: ["f * rand(-10, 34)", "rand(-36, 14)"]
+    colors: ["#B98CFF", "#FF7AB6", "#7DF3FF", "#FFD23F"]
+
+layers:
+  head:
+    - {path: "M -27 -112 C -20 -128 -8 -146 2 -160 C 8 -140 20 -126 27 -112 Z", fill: robe}
+    - {ellipse: [0, -111, 44, 7], fill: robe}
+    - {path: "M -26 -116 C -10 -120 10 -120 26 -116", stroke: gold, lw: 3}
+    - {star: [-5, -132, 4.5], fill: gold, lw: 1.3}
+    - {star: [8, -124, 3], fill: gold, stroke: none}
+    - {circle: [-3, -146, 1.6], fill: gold, stroke: none}
+  face:
+    - path: >-
+        M -27 -66 C -28 -46 -12 -26 0 -20 C 12 -26 28 -46 27 -66
+        C 18 -61 9 -65 0 -63 C -9 -65 -18 -61 -27 -66 Z
+      fill: beard
+    - for: {side: [-1, 1]}                 # fluffy moustache
+      path: "M 0 -80 C side*5 -84 side*11 -83 side*14 -78 C side*10 -79 side*5 -77 0 -77 Z"
+      fill: beard
+      lw: 1.4
+  body:
+    - {rect: [-22, -53, 44, 35], r: 11, fill: robe}
+    - {star: [-12, -26, 3.5], fill: gold, stroke: none}
+  front_hand:                              # wand
+    - rotate: -angle
+      group:
+        - {line: [[0, 4], [0, -19]], rope: [dark_brown, 2.6, 5]}
+        - {star: [0, -23, "5.5 * (1 + 0.15 * sin(t * 9))"], fill: gold, lw: 1.6}
+
+demand:
+  icon: potion
+  color: purple
+  draw:
+    - repeat: 3                            # bubbles rising out of the bottle
+      vars: {k: "(t * 0.9 + i / 3) % 1"}
+      circle: ["24 + sin(k * 6 + i) * 4", "9 - k * 9", "1.4 + k * 1.6"]
+      fill: bubble
+      lw: 1.2
+    - {rect: [19.5, 7, 9, 5], r: 1.5, fill: brown, lw: 1.6}    # cork
+    - {rect: [20.5, 11, 7, 9], r: 1.5, fill: white}
+    - {circle: [24, 30, 13], fill: purple}
+    - clip: {circle: [24, 30, 13]}
+      vars: {w: "sin(t * 4) * 1.2"}
+      group:
+        - path: "M 10 24+w C 18 21-w 30 27+w 38 24-w L 38 17 L 10 17 Z"
+          fill: ["#FFFFFF", 0.75]
+          stroke: none
+    - {circle: [24, 30, 13], stroke: ink, lw: 2.4}
+    - {ellipse: [18.5, 33, 2, 3.5], fill: ["#FFFFFF", 0.55], stroke: none}
+    - {sparkle: [38, 40, "3.5 * (0.6 + 0.4 * sin(t * 7))"], fill: yellow, stroke: none}

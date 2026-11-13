@@ -4,7 +4,7 @@ He puts on his 80s hacker outfit (poof) as soon as he has work, sits down
 at his laptop and types while a task runs, stands up (laptop under his
 arm) while he is interrupted, and changes back once every task is done.
 This is not a dress-up character: it never comes up at random and its
-outfit lives in robo.render.costumes.WORK_OUTFITS.
+outfit lives in robo/characters/hacker.yaml (role: work).
 """
 from .wardrobe import POOF_SECONDS
 

@@ -8,13 +8,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from robo.app import build_companion  # noqa: E402
 from robo.config import Settings  # noqa: E402
-from robo.core.bubble import BUBBLE_KINDS, BubbleQueue  # noqa: E402
-from robo.core.characters import CHARACTERS  # noqa: E402
+from robo.core.bubble import BubbleQueue, bubble_kinds  # noqa: E402
+from robo.core import characters  # noqa: E402
 from robo.platform.base import PointerEvent  # noqa: E402
-from robo.render.costumes import OUTFITS  # noqa: E402
 from robo.events import KINDS, Event, classify  # noqa: E402
 from robo.platform.headless import HeadlessPlatform  # noqa: E402
-from robo.render.icons import ICONS  # noqa: E402
+from robo.render.icons import ICONS, icon_kinds  # noqa: E402
 
 
 def make_robot(**settings):
@@ -39,7 +38,7 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(classify('x', 'hello', '', urgent=True), 'warning')
 
     def test_every_kind_has_an_icon(self):
-        self.assertEqual(set(BUBBLE_KINDS), set(ICONS))
+        self.assertEqual(set(bubble_kinds()), set(icon_kinds()))
         self.assertTrue(set(KINDS) <= set(ICONS))
 
 
@@ -154,8 +153,11 @@ def click_robot(robot, p):
 
 
 class CostumeTest(unittest.TestCase):
-    def test_every_character_has_an_outfit(self):
-        self.assertEqual(set(CHARACTERS), set(OUTFITS))
+    def test_every_character_has_an_outfit_and_a_demand(self):
+        for cid in characters.costume_ids():
+            c = characters.get(cid)
+            self.assertTrue(c.demand, cid)
+            self.assertIn(c.demand, icon_kinds(), cid)
 
     def test_dresses_up_on_his_own_and_makes_a_demand(self):
         robot, p = make_robot(dress_up_every=10, evil_after=0)
@@ -196,7 +198,8 @@ class CostumeTest(unittest.TestCase):
 
     def test_every_signature_move_renders_and_particles_fly(self):
         robot, p = make_robot(dress_up_every=0)
-        for cid, character in CHARACTERS.items():
+        for cid in characters.costume_ids():
+            character = characters.get(cid)
             robot.wardrobe.current = None
             robot.dress_up(cid)
             p.scheduler.advance(1)
@@ -244,7 +247,7 @@ class SettingsTest(unittest.TestCase):
         with open(os.path.join(self.tmp.name, 'settings.json'), 'w') as f:
             f.write('{"scale": "huge", "walk_speed": 99, "nonsense": 1, '
                     '"characters": ["roman", "elvis"], '
-                    '"known_characters": %s}' % json.dumps(list(CHARACTERS)))
+                    '"known_characters": %s}' % json.dumps(list(characters.costume_ids())))
         s = self.store.load()
         self.assertEqual(s.scale, 1.0)               # bad value ignored
         self.assertEqual(s.walk_speed, 3.0)          # clamped

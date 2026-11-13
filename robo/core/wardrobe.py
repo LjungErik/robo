@@ -4,7 +4,7 @@ Every `every_seconds` (randomised) he vanishes in a puff of smoke and
 comes back as a random character. He stays dressed up until he is clicked.
 Clothes are swapped halfway through the poof so the change is hidden.
 """
-from .characters import CHARACTERS
+from . import characters
 
 POOF_SECONDS = 0.7
 RANDOM_SPREAD = (0.6, 1.4)       # actual wait = every_seconds * uniform(spread)
@@ -14,7 +14,7 @@ class Wardrobe:
     def __init__(self, every_seconds, now, rng, allowed=None):
         self.every = every_seconds
         self.rng = rng
-        self.allowed = tuple(allowed) if allowed is not None else tuple(CHARACTERS)
+        self.allowed = tuple(allowed) if allowed is not None else characters.costume_ids()
         self.current = None          # Character or None
         self.last_id = None
         self.poof_start = -10.0
@@ -56,12 +56,22 @@ class Wardrobe:
             self.next_change = now + self._wait()
         self.allowed = tuple(allowed)
 
-    def dress_up(self, now, character_id=None):
+    def dress_up(self, now, character_id=None, exclude=()):
+        """Poof into a character (random one from `allowed` if none given).
+        Returns False if there is no such character."""
+        known = characters.costume_ids()
         if character_id is None:
-            pool = list(self.allowed) or list(CHARACTERS)    # menu works even if none ticked
+            pool = [c for c in self.allowed if c in known] or list(known)  # menu works even if none ticked
+            pool = [c for c in pool if c not in exclude] or pool
+            if not pool:
+                return False
             choices = [c for c in pool if c != self.last_id] or pool
             character_id = self.rng.choice(choices)
-        self._begin_poof(now, CHARACTERS[character_id])
+        character = characters.get(character_id)
+        if character is None or character.role != 'costume':
+            return False
+        self._begin_poof(now, character)
+        return True
 
     def undress(self, now):
         if self.current is not None:
@@ -83,7 +93,17 @@ class Wardrobe:
     def start_move(self, now):
         if self.current is not None:
             self.move_start = now
-            self.move_until = now + self.current.move_seconds
+            self.move_until = now + self.move_seconds
+
+    @property
+    def move_seconds(self):
+        move = self.current.move if self.current else None
+        return move.seconds if move else 0.0
+
+    def refresh(self):
+        """The character files were reloaded: pick up the new version of his costume."""
+        if self.current is not None:
+            self.current = characters.get(self.current.id) or self.current
 
     def stop_move(self):
         self.move_until = 0.0

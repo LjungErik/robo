@@ -3,11 +3,16 @@
 Every icon is a function `icon_xxx(cr, t)` that draws inside a 48x48 box;
 `t` is the number of seconds since the bubble appeared, for animation.
 To add an icon: write the function, add it to ICONS, and add its name to
-robo.events.KINDS.
+robo.events.KINDS. The things characters demand while dressed up are not
+here: each character file draws its own (`demand:` in robo/characters/).
 """
 import math
 
 import cairo
+
+from robo.design import REGISTRY
+
+from .interpreter import safe_draw
 
 from .shapes import (BLUE, CARD, CREAM, GREEN, GREY, INK, ORANGE, PINK, PURPLE, RED, SKY, hexc,
                      WHITE, YELLOW, circle, ellipse, heart_path, line, outlined_stroke,
@@ -313,355 +318,6 @@ def icon_heart(cr, t):
     paint(cr, WHITE[:3] + (0.8,), None)
 
 
-# ---------------------------------------------------------------- dressed-up demands
-SAND = hexc('#F3DCA8')
-STONE = hexc('#E8B964')
-ROBO_EYE = hexc('#7DF3FF')
-BROWN = hexc('#A8693A')
-AMBER = hexc('#F5B83D')
-GRAPE = hexc('#9B5DE5')
-OIL = hexc('#D9902B')
-
-
-def icon_pyramid(cr, t):
-    """Blocks drop in row by row; the finished pyramid has Robo's face on it."""
-    circle(cr, 40, 8, 4.5)
-    paint(cr, YELLOW, None)
-    rrect(cr, 2, 38, 44, 6, 3)
-    paint(cr, SAND, INK, 2)
-    cycle = t % 4.0
-    rows = min(4, int(cycle / 0.45))
-    for r in range(rows):
-        drop = max(0.0, 1 - (cycle - r * 0.45) / 0.2) * 8
-        y = 31 - r * 7 - drop
-        n = 4 - r
-        x0 = 24 - n * 4.5
-        for i in range(n):
-            rrect(cr, x0 + i * 9, y, 9, 7, 1.5)
-            paint(cr, STONE, INK, 1.8)
-    if rows == 4 and cycle > 1.9:
-        # gold capstone, his antenna and his little face: the pyramid of ME
-        cr.move_to(19.5, 10)
-        cr.line_to(28.5, 10)
-        cr.line_to(24, 3.5)
-        cr.close_path()
-        paint(cr, YELLOW, INK, 1.8)
-        line(cr, [(24, 3.5), (24, 0.5)], INK, 1.6)
-        circle(cr, 24, 0, 1.8)
-        paint(cr, RED, None)
-        for ex in (20.5, 27.5):
-            rrect(cr, ex - 1.4, 19, 2.8, 4, 1.4)
-            paint(cr, ROBO_EYE, None)
-        cr.new_path()
-        cr.arc(24, 25.5, 2.2, 0.15 * math.pi, 0.85 * math.pi)
-        paint(cr, None, ROBO_EYE, 1.4)
-        tw = 0.6 + 0.4 * math.sin(t * 7)
-        sparkle(cr, 8, 12, 4 * tw)
-        sparkle(cr, 34, 18, 3 * (1.6 - tw))
-
-
-def icon_horseshoe(cr, t):
-    cr.save()
-    cr.translate(24, 8)
-    cr.rotate(math.sin(t * 3) * 0.18)
-    cr.translate(-24, -8)
-
-    def shoe():
-        cr.new_path()
-        cr.arc(24, 22, 12, -0.25, math.pi + 0.25)
-    outlined_stroke(cr, shoe, GREY, 7, 10.5)
-    for a in (0.25, 0.85, 2.3, 2.9):
-        circle(cr, 24 + math.cos(a) * 12, 22 + math.sin(a) * 12, 1.2)
-        paint(cr, INK, None)
-    cr.restore()
-    tw = 0.6 + 0.4 * math.sin(t * 6)
-    sparkle(cr, 40, 10, 5 * tw)
-    sparkle(cr, 8, 34, 3.5 * (1.6 - tw))
-
-
-def icon_mead(cr, t):
-    def handle():
-        cr.new_path()
-        cr.arc(32, 29, 7, -math.pi / 2, math.pi / 2)
-    outlined_stroke(cr, handle, AMBER, 3, 6.5)
-    rrect(cr, 9, 17, 23, 25, 4)
-    paint(cr, AMBER)
-    for y in (24, 35):
-        line(cr, [(9, y), (32, y)], BROWN, 2)
-    drip = (t * 0.8) % 1.0                  # foam sliding down the side
-    rrect(cr, 27.5, 16, 5, 6 + drip * 12, 2.5)
-    paint(cr, WHITE, INK, 1.8)
-    for x, y, r in ((12, 16, 5), (18, 13, 5.5), (25, 14, 5.5), (30, 16, 4.5)):
-        circle(cr, x, y, r)
-        paint(cr, WHITE, INK, 1.8)
-    for x, y, r in ((12, 16, 3.6), (18, 13, 4.1), (25, 14, 4.1), (30, 16, 3.1)):
-        circle(cr, x, y, r)                 # hide the inner outlines
-        paint(cr, WHITE, None)
-
-
-def icon_receipt(cr, t):
-    """A receipt that just keeps on unrolling."""
-    length = 10 + min(1.0, (t % 3.2) / 2.2) * 28
-    top, bottom = 5, 5 + length
-    cr.move_to(13, top)
-    cr.line_to(35, top)
-    cr.line_to(35, bottom)
-    x = 35.0
-    while x > 13:                           # torn zig-zag edge
-        cr.line_to(x - 2.75, bottom - 2.5)
-        cr.line_to(max(13, x - 5.5), bottom)
-        x -= 5.5
-    cr.close_path()
-    paint(cr, WHITE, INK, 2)
-    y = top + 6
-    while y < bottom - 6:
-        line(cr, [(17, y), (31 if int(y) % 3 else 27, y)], GREY, 1.8)
-        y += 4.5
-    rrect(cr, 9, 2, 30, 6, 3)               # the roll
-    paint(cr, CREAM, INK, 2)
-    if length > 34:
-        circle(cr, 34, 36, 7)
-        paint(cr, RED, INK, 1.8)
-        cr.select_font_face('Sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        cr.set_font_size(10)
-        ext = cr.text_extents('$')
-        cr.move_to(34 - ext.width / 2 - ext.x_bearing, 36 - ext.height / 2 - ext.y_bearing)
-        cr.set_source_rgba(*WHITE)
-        cr.show_text('$')
-
-
-def icon_oilcan(cr, t):
-    def spout():
-        cr.new_path()
-        cr.move_to(28, 27)
-        cr.line_to(41, 14)
-    outlined_stroke(cr, spout, GREY, 3, 6)
-
-    def handle():
-        cr.new_path()
-        cr.arc(9, 30, 6, math.pi / 2, math.pi * 1.5)
-    outlined_stroke(cr, handle, RED, 2.6, 5.6)
-    cr.move_to(13, 23)
-    cr.line_to(16, 16)
-    cr.line_to(22, 16)
-    cr.line_to(25, 23)
-    cr.close_path()
-    paint(cr, RED)
-    rrect(cr, 8, 22, 22, 19, 4)
-    paint(cr, RED)
-    circle(cr, 19, 31, 4)
-    paint(cr, YELLOW, INK, 1.6)
-    k = (t * 1.1) % 1.0                     # drip... drip...
-    dy = 16 + k * k * 24
-    cr.move_to(41, dy - 3.5)
-    cr.curve_to(43.5, dy, 43.5, dy + 2.5, 41, dy + 2.5)
-    cr.curve_to(38.5, dy + 2.5, 38.5, dy, 41, dy - 3.5)
-    cr.close_path()
-    paint(cr, OIL, INK, 1.4)
-
-
-def icon_grapes(cr, t):
-    cr.save()
-    cr.translate(24, 6)
-    cr.rotate(math.sin(t * 3) * 0.1)
-    cr.translate(-24, -6)
-    line(cr, [(24, 5), (24, 12)], BROWN, 2.6)
-    cr.save()
-    cr.translate(31, 9)
-    cr.rotate(-0.5)
-    ellipse(cr, 0, 0, 7, 3.5)
-    cr.restore()
-    paint(cr, GREEN)
-    for row, n in enumerate((4, 3, 2, 1)):
-        for i in range(n):
-            cx = 24 - (n - 1) * 3.6 + i * 7.2
-            cy = 16 + row * 6.5
-            circle(cr, cx, cy, 4.3)
-            paint(cr, GRAPE, INK, 1.8)
-            circle(cr, cx - 1.4, cy - 1.4, 1.1)
-            paint(cr, (1, 1, 1, 0.7), None)
-    cr.restore()
-
-
-
-def icon_cupcake(cr, t):
-    dy = -abs(math.sin(t * 3)) * 1.5
-    cr.save()
-    cr.translate(0, dy)
-    cr.move_to(12, 27)                        # striped wrapper
-    cr.line_to(36, 27)
-    cr.line_to(32.5, 43)
-    cr.line_to(15.5, 43)
-    cr.close_path()
-    paint(cr, SKY)
-    for x in (18, 22, 26, 30):
-        line(cr, [(x, 29), (x - (x - 24) * 0.15, 41)], WHITE, 1.6)
-    for x, y, rx, ry in ((24, 25, 14, 6), (24, 19, 10.5, 5.5), (24, 13.5, 6.5, 4.5)):
-        ellipse(cr, x, y, rx, ry)
-        paint(cr, hexc('#FFD1E8'))
-    for (x, y), col in zip(((17, 24), (29, 22), (22, 18), (27, 15), (20, 26)),
-                           (YELLOW, BLUE, GREEN, RED, PURPLE)):
-        line(cr, [(x, y), (x + 2, y - 1)], col, 1.8)
-    line(cr, [(24, 6), (27, 2)], BROWN, 1.6)
-    circle(cr, 24, 7.5, 3.6)
-    paint(cr, RED)
-    cr.restore()
-
-
-def icon_rocket(cr, t):
-    dy = math.sin(t * 4) * 1.5
-    cr.save()
-    cr.translate(0, dy)
-    flick = abs(math.sin(t * 20)) * 4
-    cr.move_to(19.5, 36)                      # flame
-    cr.curve_to(20, 42, 24, 44 + flick, 24, 46 + flick)
-    cr.curve_to(24, 44 + flick, 28, 42, 28.5, 36)
-    cr.close_path()
-    paint(cr, ORANGE, INK, 1.6)
-    cr.move_to(22, 36)
-    cr.line_to(24, 41 + flick * 0.6)
-    cr.line_to(26, 36)
-    cr.close_path()
-    paint(cr, YELLOW, None)
-    for side in (-1, 1):                      # fins
-        cr.move_to(24 + side * 6.5, 25)
-        cr.line_to(24 + side * 13, 37)
-        cr.line_to(24 + side * 6.5, 34)
-        cr.close_path()
-        paint(cr, RED)
-    cr.move_to(24, 3)
-    cr.curve_to(32, 9, 32.5, 24, 30.5, 34)
-    cr.line_to(17.5, 34)
-    cr.curve_to(15.5, 24, 16, 9, 24, 3)
-    cr.close_path()
-    paint(cr, WHITE)
-    circle(cr, 24, 18, 4.6)
-    paint(cr, SKY)
-    cr.restore()
-    sparkle(cr, 8, 12, 3.5 * (0.6 + 0.4 * math.sin(t * 6)))
-    sparkle(cr, 41, 28, 3 * (0.6 + 0.4 * math.cos(t * 5)))
-
-
-def icon_potion(cr, t):
-    for i in range(3):                        # bubbles rising out of the bottle
-        k = (t * 0.9 + i / 3) % 1.0
-        circle(cr, 24 + math.sin(k * 6 + i) * 4, 9 - k * 9, 1.4 + k * 1.6)
-        paint(cr, hexc('#D9B8FF'), INK, 1.2)
-    rrect(cr, 19.5, 7, 9, 5, 1.5)              # cork
-    paint(cr, BROWN, INK, 1.6)
-    rrect(cr, 20.5, 11, 7, 9, 1.5)
-    paint(cr, WHITE)
-    circle(cr, 24, 30, 13)
-    paint(cr, PURPLE)
-    cr.save()
-    circle(cr, 24, 30, 13)
-    cr.clip()
-    wave = math.sin(t * 4) * 1.2
-    cr.move_to(10, 24 + wave)
-    cr.curve_to(18, 21 - wave, 30, 27 + wave, 38, 24 - wave)
-    cr.line_to(38, 17)
-    cr.line_to(10, 17)
-    cr.close_path()
-    paint(cr, (1, 1, 1, 0.75), None)
-    cr.restore()
-    circle(cr, 24, 30, 13)
-    paint(cr, None, INK, 2.4)
-    ellipse(cr, 18.5, 33, 2, 3.5)
-    paint(cr, (1, 1, 1, 0.55), None)
-    sparkle(cr, 38, 40, 3.5 * (0.6 + 0.4 * math.sin(t * 7)))
-
-
-def icon_treasure(cr, t):
-    lift = abs(math.sin(t * 3)) * 3
-    for x, col in ((16, YELLOW), (24, ORANGE), (31, YELLOW)):    # coins peeking out
-        circle(cr, x, 24 - lift * 0.6, 3.6)
-        paint(cr, col, INK, 1.4)
-    rrect(cr, 7, 24, 34, 17, 3)
-    paint(cr, BROWN)
-    cr.save()
-    cr.translate(0, -lift)
-    cr.move_to(7, 24)
-    cr.curve_to(7, 12, 41, 12, 41, 24)
-    cr.close_path()
-    paint(cr, BROWN)
-    cr.restore()
-    for x in (13, 35):
-        line(cr, [(x, 24), (x, 41)], YELLOW, 2.4)
-    rrect(cr, 21, 25, 6, 7, 1.5)
-    paint(cr, YELLOW, INK, 1.4)
-    tw = 0.6 + 0.4 * math.sin(t * 6)
-    sparkle(cr, 9, 10, 4 * tw)
-    sparkle(cr, 40, 8, 3 * (1.6 - tw))
-
-
-def icon_kitten(cr, t):
-    blink = (t % 3.0) < 0.15
-    for side in (-1, 1):
-        cr.move_to(24 + side * 13, 22)
-        cr.line_to(24 + side * 12, 7)
-        cr.line_to(24 + side * 3, 15)
-        cr.close_path()
-        paint(cr, ORANGE)
-        cr.move_to(24 + side * 11, 18)
-        cr.line_to(24 + side * 10.5, 11)
-        cr.line_to(24 + side * 6, 15)
-        cr.close_path()
-        paint(cr, hexc('#FF9CC2'), None)
-    ellipse(cr, 24, 27, 15, 12.5)
-    paint(cr, ORANGE)
-    for x in (18, 30):
-        if blink:
-            line(cr, [(x - 2.5, 26), (x + 2.5, 26)], INK, 2)
-        else:
-            ellipse(cr, x, 26, 2.8, 3.6)
-            paint(cr, INK, None)
-            circle(cr, x - 0.9, 24.6, 1.1)
-            paint(cr, WHITE, None)
-    cr.move_to(22.5, 30)
-    cr.line_to(25.5, 30)
-    cr.line_to(24, 31.8)
-    cr.close_path()
-    paint(cr, hexc('#FF7AB6'), None)
-    cr.new_path()
-    cr.arc(22, 32, 2, 0, math.pi)
-    cr.new_sub_path()
-    cr.arc(26, 32, 2, 0, math.pi)
-    paint(cr, None, INK, 1.4)
-    for side in (-1, 1):
-        for dy in (-1.5, 1.5):
-            line(cr, [(24 + side * 8, 31 + dy * 0.3), (24 + side * 17, 30 + dy * 1.6)], INK, 1)
-    for i in range(2):                        # little "help!" pleas
-        k = (t * 0.8 + i / 2) % 1.0
-        sparkle(cr, 40 - i * 32, 10 - k * 6, 3 * (1 - k))
-
-
-def icon_fish(cr, t):
-    cr.save()
-    cr.translate(22, 24)
-    cr.rotate(math.sin(t * 6) * 0.12)
-    cr.translate(-22, -24)
-    cr.move_to(32, 24)                        # tail
-    cr.line_to(42, 16)
-    cr.line_to(41, 32)
-    cr.close_path()
-    paint(cr, BLUE)
-    ellipse(cr, 21, 24, 14, 9)
-    paint(cr, SKY)
-    cr.new_path()
-    cr.arc(26, 24, 7, math.pi * 0.6, math.pi * 1.4)
-    paint(cr, None, BLUE, 1.6)
-    circle(cr, 14, 22, 2.6)
-    paint(cr, WHITE, INK, 1.4)
-    circle(cr, 13.5, 22, 1.1)
-    paint(cr, INK, None)
-    cr.restore()
-    for i in range(3):
-        k = (t * 0.7 + i / 3) % 1.0
-        circle(cr, 6 + i * 2, 18 - k * 14, 1.2 + k * 1.4)
-        paint(cr, None, BLUE, 1.2)
-
-
-
 # ---------------------------------------------------------------- conversation
 def icon_mic(cr, t):
     """Listening: a microphone with sound waves pulsing out."""
@@ -726,6 +382,9 @@ def icon_task_done(cr, t):
     sparkle(cr, 42, 7, 5 * tw)
 
 
+BUTTER = hexc('#FFD54F')
+ANTENNA_STATES = {'evil': hexc('#FF3B4E'), 'sleep': GREY, 'hack': hexc('#39FF7A')}
+
 # name -> (draw function, accent colour used for the robot's antenna)
 ICONS = {
     'battery_low': (icon_battery_low, RED),
@@ -747,19 +406,6 @@ ICONS = {
     'bluetooth': (icon_bluetooth, BLUE),
     'usb': (icon_usb, SKY),
     'heart': (icon_heart, PINK),
-    # demands made while dressed up (see robo.core.characters)
-    'pyramid': (icon_pyramid, YELLOW),
-    'horseshoe': (icon_horseshoe, GREY),
-    'mead': (icon_mead, ORANGE),
-    'receipt': (icon_receipt, GREEN),
-    'oilcan': (icon_oilcan, RED),
-    'grapes': (icon_grapes, PURPLE),
-    'cupcake': (icon_cupcake, PINK),
-    'rocket': (icon_rocket, RED),
-    'potion': (icon_potion, PURPLE),
-    'treasure': (icon_treasure, YELLOW),
-    'kitten': (icon_kitten, ORANGE),
-    'fish': (icon_fish, BLUE),
     # conversation
     'mic': (icon_mic, SKY),
     'thinking': (icon_thinking, YELLOW),
@@ -768,10 +414,33 @@ ICONS = {
 }
 
 
+def icon_kinds():
+    """Every icon a bubble can show: the built-in ones plus the characters' demands."""
+    return frozenset(ICONS) | frozenset(REGISTRY.demand_icons())
+
+
+def antenna_colour_for(antenna, alert_kind=''):
+    """The antenna glows in the colour of whatever the robot is reporting."""
+    if antenna == 'alert':
+        if alert_kind in ICONS:
+            return ICONS[alert_kind][1]
+        demand = REGISTRY.demand_icons().get(alert_kind)
+        if demand and demand[1]:
+            return demand[1]
+        return ICONS['bell'][1]
+    return ANTENNA_STATES.get(antenna, BUTTER)
+
+
 def draw_icon(cr, kind, t):
-    fn = ICONS.get(kind, ICONS['bell'])[0]
     cr.save()
     cr.set_line_cap(cairo.LINE_CAP_ROUND)
     cr.set_line_join(cairo.LINE_JOIN_ROUND)
-    fn(cr, t)
+    if kind in ICONS:
+        ICONS[kind][0](cr, t)
+    else:
+        demand = REGISTRY.demand_icons().get(kind)
+        if demand:                       # drawn from the character's file
+            safe_draw(demand[0], cr, {'t': t, '_palette': {}, 'evil': 0.0}, f'icon {kind}')
+        else:
+            ICONS['bell'][0](cr, t)
     cr.restore()

@@ -12,6 +12,7 @@ WAVE = 'wave'
 ARMS_UP = 'arms_up'
 LAUGH = 'laugh'          # evil laugh
 SWEAT = 'sweat'          # "oops, you caught me"
+LOOK_MOVE = 'look_move'  # his everyday look's signature move (when that look is a character)
 
 HEART_LIFETIME = 1.5
 
