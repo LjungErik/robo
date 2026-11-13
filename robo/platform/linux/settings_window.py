@@ -237,7 +237,7 @@ class SettingsWindow:
         top.pack_start(_style(Gtk.Label(label=f.label, xalign=0), 'robo-row-label'), True, True, 0)
         row.pack_start(top, False, False, 0)
 
-        if f.kind == 'bool':
+        if f.kind in ('bool', 'memory'):
             sw = Gtk.Switch(valign=Gtk.Align.CENTER)
             sw.connect('notify::active', self._changed)
             top.pack_end(sw, False, False, 0)

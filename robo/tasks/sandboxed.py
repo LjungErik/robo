@@ -14,7 +14,7 @@ requests (checked by the Broker) and the final result.
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from robo.sandbox import DenyAll, Limits, LaunchSpec, Permissions, Workspace
 from robo.sandbox.broker import Broker
@@ -35,6 +35,7 @@ class TaskEnvironment:
     sandbox: Optional[object] = None             # robo.sandbox.SandboxBackend
     approver: object = field(default_factory=DenyAll)
     workspace_root: str = field(default_factory=default_workspace_root)
+    agent_factory: Optional[Callable] = None     # () -> robo.agents.AgentBackend, or None
 
     def unavailable_reason(self):
         """None if tasks can run safely, else why not."""

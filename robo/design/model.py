@@ -11,6 +11,12 @@ from typing import Optional, Tuple
 from .expr import Expr
 
 ROLES = ('base', 'costume', 'work')
+# Situations he can say something on his own in (personality.lines.<kind>), see
+# robo/core/initiative.py. "{name}" is replaced by your name; "{, name}" by ", Erik"
+# (or nothing if he doesn't know your name yet).
+LINE_KINDS = ('first_meeting', 'morning', 'welcome_back', 'break', 'late', 'bored', 'remark',
+              'question', 'sleepy', 'picked_up_happy', 'picked_up_grumpy', 'put_down',
+              'task_started', 'hobby')
 TRAVEL_KINDS = ('fly', 'hang', 'teleport')
 
 
@@ -72,6 +78,8 @@ class Character:
     walk_speed: float = 1.0
     walk_lift: Optional[Expr] = None   # extra height while walking (vars: phase)
     travel: Tuple[Travel, ...] = ()
+    personality: dict = field(default_factory=dict, compare=False)   # see LINE_KINDS / README
+    hobbies: dict = field(default_factory=dict, compare=False)       # name -> Move (idle pastimes)
     source: str = ''                 # file it came from
     spec: dict = field(default_factory=dict, compare=False, repr=False)  # the whole file
 

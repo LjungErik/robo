@@ -59,7 +59,7 @@ def pose_env(p, design):
     return {
         't': p.t, 'phase': p.phase, 'walking': p.walking, 'dangling': p.dangling,
         'lift': p.lift, 'squash': p.squash, 'mood': p.mood, 'openness': p.openness,
-        'look': p.look, 'arms': p.arms, 'antenna': p.antenna, 'glow': p.glow,
+        'look': p.look, 'look_y': p.look_y, 'hobby': p.hobby, 'arms': p.arms, 'antenna': p.antenna, 'glow': p.glow,
         'shadow': p.shadow, 'tilt': p.tilt, 'evil': max(0.0, min(1.0, p.evil)),
         'glitch': p.glitch, 'sweat': p.sweat, 'zzz': p.zzz, 'talk': p.talk, 'sit': p.sit,
         'facing': p.facing, 'costume': p.costume, 'skin': p.skin or 'robo',

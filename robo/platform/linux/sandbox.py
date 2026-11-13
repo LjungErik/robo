@@ -96,15 +96,24 @@ class BubblewrapBackend(SandboxBackend):
         for m in spec.read_only:
             argv += ['--ro-bind', m.source, '/work/' + m.target]
         argv += ['--remount-ro', '/', '--chdir', '/work',
-                 PYTHON, '-I', SANDBOX_WORKER + '/main.py']
+                 PYTHON, '-I', SANDBOX_WORKER + '/' + spec.entry]
         return argv
+
+    def _env(self):
+        # for systemd-run only; bwrap clears it
+        return {k: os.environ[k] for k in ('PATH', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS')
+                if k in os.environ}
+
+    def stdio_command(self, spec):
+        if self.check():
+            return None
+        return self.command(spec), self._env()
 
     def launch(self, spec):
         problem = self.check()
         if problem:
             raise RuntimeError(problem)
-        env = {k: os.environ[k] for k in ('PATH', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS')
-               if k in os.environ}        # for systemd-run only; bwrap clears it
+        env = self._env()
         logfile = open(spec.log_path or os.devnull, 'ab')
         try:
             popen = subprocess.Popen(self.command(spec), stdin=subprocess.PIPE,

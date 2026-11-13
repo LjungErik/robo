@@ -14,7 +14,7 @@ import time
 from robo.events import KINDS, Event
 from robo.platform.base import MenuItem, PointerEvent, WindowHost
 from robo.render.scene import draw_frame
-from robo.tasks import TaskEnvironment, TaskManager, make_task
+from robo.tasks import TaskEnvironment, TaskManager, TaskRefused, make_task
 
 from . import layout, personality
 from .body import Body
@@ -24,6 +24,9 @@ from .evil import EvilMode
 from .effects import Effects
 from .face import LOOK_MOVE, WAVE, Face
 from .hacker import HackerMode
+from .initiative import Initiative
+from .memory import Memory
+from .mind import Mind
 from .pose import build_pose
 from .talk import Conversation
 from .travel import Traveller
@@ -55,7 +58,12 @@ class Companion:
         self.look = settings.look             # his everyday look (base design or character)
         self.tasks = TaskManager()
         self.task_env = TaskEnvironment()       # no sandbox = no tasks (set by the app)
+        self.last_task_problem = None
         self.hacker = HackerMode()
+        self.memory = Memory(None, enabled=settings.remember_me)   # the app gives it a file
+        self.mind = Mind(self.memory, rng=self.rng)
+        self.initiative = Initiative(self.rng)
+        self._idle_seconds = 0.0
         self.conversation = Conversation(self)
         self.body = None            # created in attach(), once we know the screen
         self.bounds = None
@@ -67,6 +75,14 @@ class Companion:
         self._last_pos = None
         self._last_bubble_visible = None
         self._next_screen_check = 0.0
+
+    def hobbies(self):
+        costume = self.wardrobe.current.id if self.wardrobe.current else ''
+        return characters.REGISTRY.hobbies(self.look, costume)
+
+    def personality(self):
+        costume = self.wardrobe.current.id if self.wardrobe.current else ''
+        return characters.REGISTRY.personality(self.look, costume)
 
     @property
     def look_character(self):
@@ -121,6 +137,8 @@ class Companion:
     def on_idle(self, seconds):
         """The IdleMonitor reports how long the user has been away."""
         now = self.clock()
+        self._idle_seconds = seconds
+        self.initiative.on_idle(seconds, now, self.memory)
         change = self.evil.on_idle(seconds, now, may_turn_evil=not self.busy_working)
         if change == 'evil':
             log.info('no input for a while... turning EVIL')
@@ -153,6 +171,9 @@ class Companion:
 
         self.face.update(now, dt)
         self.evil.update(dt)
+        self.mind.update(dt, busy=self.busy_working or self.conversation.active,
+                         idle_seconds=self._idle_seconds)
+        self.memory.update()
 
         happened = self.body.update(now, dt, self.bounds, personality.walk_speed(self))
         if happened == 'ready' and not self.bubbles.busy and not self.conversation.active:
@@ -231,10 +252,21 @@ class Companion:
             log.warning("can't do tasks: %s", problem)
             personality.on_task_refused(self, now)
             return 'unavailable'
-        task = make_task(kind, self.rng, self.task_env, args)
+        try:
+            task = make_task(kind, self.rng, self.task_env, args)
+        except TaskRefused as e:
+            log.warning("can't do that task: %s", e)
+            self.last_task_problem = str(e)
+            personality.on_task_refused(self, now)
+            self.conversation.announce(f"Sorry, I can't do that task: {e}.", 'sad')
+            return 'refused'
         perms = task.permissions
-        if perms is not None and perms.needs_approval:
-            log.info('task %s asks for: %s', task.id, perms.describe())
+        lines = task.approval_lines() if hasattr(task, 'approval_lines') else \
+            (perms.describe() if perms is not None else [])
+        approved = bool((args or {}).get('approved'))     # filled in by you in the task form
+        if not approved and (getattr(task, 'kind', '') == 'agent'
+                             or (perms is not None and perms.needs_approval)):
+            log.info('task %s asks for: %s', task.id, lines)
 
             def answered(ok):
                 if ok:
@@ -242,9 +274,27 @@ class Companion:
                 else:
                     log.info('task %s: permissions denied', task.id)
                     personality.on_task_refused(self, self.clock())
-            self.task_env.approver.ask_permissions(task.title, perms.describe(), answered)
+            self.task_env.approver.ask_permissions(task.title, lines, answered)
             return 'asking'
         return self._submit(task)
+
+    def agent_can_do_tasks(self):
+        factory = self.task_env.agent_factory
+        if factory is None or self.task_env.unavailable_reason():
+            return False
+        agent = factory()
+        return bool(agent and agent.supports_tasks)
+
+    def ask_for_task(self):
+        """Menu: a form for a task (what to do, which files). You chose the files
+        yourself there, so it counts as approved."""
+        agent = self.task_env.agent_factory() if self.task_env.agent_factory else None
+        if agent is None:
+            return
+        shown = self.task_env.approver.ask_task(
+            agent.name, lambda args: self.start_task('agent', args))
+        if not shown:
+            self.start_task()
 
     def _submit(self, task):
         now = self.clock()
@@ -258,15 +308,18 @@ class Companion:
         changes = getattr(task, 'changes', None)
         if not changes:
             return
+        cleanup = getattr(task, 'cleanup', lambda: None)
 
         def answered(ok):
             if not ok:
                 log.info('task %s: changes thrown away', task.id)
+                cleanup()
                 return
             applied, skipped = changes.apply()
             log.info('task %s: applied %d changes', task.id, len(applied))
             for change, reason in skipped:
                 log.warning('  skipped %s: %s', change.original_path, reason)
+            cleanup()
         self.task_env.approver.review_changes(task.title, changes.describe(), answered)
 
     def shutdown(self):
@@ -392,7 +445,10 @@ class Companion:
         if self.busy_working:
             items.append(MenuItem('🛑  Abort task', self.abort_task))
         else:
-            items.append(MenuItem('💻  Do a task', self.start_task))
+            if self.agent_can_do_tasks():
+                items.append(MenuItem('💻  Give me a task…', self.ask_for_task))
+            else:
+                items.append(MenuItem('💻  Do a task', self.start_task))
             if self.body.state == 'sleep':
                 items.append(MenuItem('☀️  Wake up', lambda: self.body.wake(now())))
             else:

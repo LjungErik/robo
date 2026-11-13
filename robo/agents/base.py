@@ -64,6 +64,10 @@ class AgentBackend:
     install_hint = ''
     login_hint = ''
     remembers = False               # True: the CLI keeps the conversation (session ids)
+    # Tasks: the CLI can be told to use ONLY Robo's sandboxed tools (MCP) and none of
+    # its own. A CLI that can't switch its own file / shell tools off must say False.
+    supports_tasks = False
+    tasks_unsupported = 'can only chat for now'
 
     def __init__(self, workdir, model='', timeout=DEFAULT_TIMEOUT):
         self.workdir = workdir
@@ -88,6 +92,16 @@ class AgentBackend:
 
     def parse(self, stdout, stderr, returncode) -> AgentAnswer:
         raise NotImplementedError
+
+    def task_command(self, prompt, system, mcp_config, max_turns) -> List[str]:
+        """argv that works on a task using only the MCP server in `mcp_config`."""
+        raise NotImplementedError
+
+    def task_event(self, line):
+        """One line the task command printed -> dict or None:
+        {'kind': 'tool', 'name': ...}, {'kind': 'text', 'text': ...},
+        {'kind': 'result', 'text': ..., 'ok': bool}"""
+        return None
 
     # ------------------------------------------------------------ public
     def ask(self, prompt, system):

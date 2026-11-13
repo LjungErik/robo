@@ -19,6 +19,8 @@ class Codex(AgentBackend):
     install_hint = 'Install the Codex CLI: npm install -g @openai/codex'
     login_hint = 'Open a terminal, run "codex login" and sign in with your ChatGPT account.'
     remembers = False
+    tasks_unsupported = ("can only chat for now: Codex's own shell can't be switched off, "
+                         'so it could read files you did not give it')
 
     def status(self):
         if not self.executable():

@@ -65,6 +65,8 @@ class LaunchSpec:
     read_only: Tuple[Mount, ...] = ()    # extra files it may read, shown inside work_dir
     log_path: Optional[str] = None       # where the worker's stderr goes
     limits: Limits = Limits()
+    entry: str = 'main.py'               # which worker program: main.py, or mcp_server.py
+                                         #   (the tools an AI agent task uses)
 
 
 class SandboxProcess(ABC):
@@ -102,6 +104,12 @@ class SandboxBackend(ABC):
 
     @abstractmethod
     def launch(self, spec: LaunchSpec) -> SandboxProcess: ...
+
+    def stdio_command(self, spec: LaunchSpec):
+        """(argv, env) that start the worker in the sandbox when SOMEONE ELSE runs it,
+        talking over stdin / stdout: an AI agent's CLI launches Robo's MCP tool
+        server this way (robo/tasks/agent_task.py). None if not supported."""
+        return None
 
 
 class PipeProcess(SandboxProcess):

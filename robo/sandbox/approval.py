@@ -20,6 +20,13 @@ class Approver(ABC):
         """The task changed these files (in its copies). Apply the changes?"""
 
 
+    def ask_task(self, agent_name: str, on_answer: Callable[[dict], None]) -> bool:
+        """Optional: ask you for a task in a form (what to do, which files he may
+        read / change). Calls on_answer({'goal', 'read', 'write'}) or never (cancel).
+        Returns False if this platform can't show such a form."""
+        return False
+
+
 class DenyAll(Approver):
     def ask_permissions(self, title, lines, on_answer):
         on_answer(False)

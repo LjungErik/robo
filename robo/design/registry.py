@@ -156,6 +156,33 @@ class Registry:
                 return cf.particles[name]
         return None
 
+    def personality(self, look='', costume=''):
+        """Who he is right now: Robo's own personality, then his look's, then his
+        costume's (each overrides what it sets; lines per situation)."""
+        self._ensure()
+        base, look_cf = self.base_of(look or DEFAULT_BASE)
+        out = {'lines': {}}
+        for cf in (base, look_cf, self.files.get(costume) if costume else None):
+            if cf is None:
+                continue
+            p = cf.character.personality
+            for k, v in p.items():
+                if k == 'lines':
+                    out['lines'].update(v)
+                else:
+                    out[k] = v
+        return out
+
+    def hobbies(self, look='', costume=''):
+        """name -> Move: what he does to pass the time (base, then look, then costume)."""
+        self._ensure()
+        base, look_cf = self.base_of(look or DEFAULT_BASE)
+        out = {}
+        for cf in (base, look_cf, self.files.get(costume) if costume else None):
+            if cf is not None:
+                out.update(cf.character.hobbies)
+        return out
+
     def gesture(self, name):
         """A gesture from any loaded file (for poses the current design doesn't define)."""
         self._ensure()
@@ -196,7 +223,7 @@ class Registry:
         rig.update(base.rig)
         palette = dict(base.palette)
         parts = {p: (fn, f'{base.id}.parts.{p}') for p, fn in base.parts.items()}
-        slots = {}
+        slots = {s: [(fn, f'{base.id}.layers.{s}')] for s, fn in base.layers.items()}
         gestures = dict(base.gestures)
         antenna_y = rig['antenna_y'] if rig['antenna_y'] is not None else rig['head_top']
         for cf in layers:

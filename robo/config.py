@@ -41,6 +41,11 @@ class Settings:
     voice_volume: float = 0.8           # 0..1
     robot_effect: bool = False          # use the beepy robot voice even when nice
     wake_word: bool = False             # keep listening for "Hey Robo"
+    chattiness: str = 'sometimes'       # how often he speaks up on his own: off/rarely/sometimes/often
+    break_reminders: bool = True        # suggest a break after a long stretch of work
+    break_after: float = 90 * 60        # ...this long without a break
+    quiet_hours: str = 'off'            # no chatter in these hours, e.g. '22-8'
+    remember_me: bool = True            # keep a memory of you (name, things you told him)
     agent: str = OFF                    # AI brain: 'off', 'claude', 'codex' or 'gemini'
     agent_model: str = ''               # model for the agent CLI ('' = its own default)
     verbose: bool = False               # log events
@@ -55,7 +60,7 @@ class Settings:
                 put(f.key, min(max(float(value), f.min), f.max))
             elif f.kind == 'seconds':
                 put(f.key, float(value))
-            elif f.kind == 'bool':
+            elif f.kind in ('bool', 'memory'):
                 put(f.key, bool(value))
         # "--evil-after 0" / "--dress-up-every 0" mean "off"
         if self.evil_after <= 0:
@@ -76,6 +81,10 @@ class Settings:
             wanted = set(chars)
             put('characters', tuple(c for c in known if c in wanted))
         put('agent', self.agent if self.agent in BACKENDS else OFF)
+        for f in FIELDS:
+            if f.kind == 'choice' and f.key != 'agent' and \
+                    getattr(self, f.key) not in [v for v, _l in f.choices]:
+                put(f.key, getattr(Settings, f.key))
         put('agent_model', str(self.agent_model or '').strip())
         look = str(self.look or characters.DEFAULT_LOOK)
         put('look', look if look in characters.look_ids() else characters.DEFAULT_LOOK)
@@ -117,7 +126,7 @@ class Settings:
                     seen = data.get('known_characters', LEGACY_KNOWN_CHARACTERS)
                     new = [c for c in all_characters() if c not in set(seen)]
                     changes[key] = tuple(chosen) + tuple(new)
-            elif key in ('look', 'agent', 'agent_model'):
+            elif key in ('look', 'agent', 'agent_model', 'chattiness', 'quiet_hours'):
                 changes[key] = str(value)
             elif isinstance(getattr(base, key), bool):
                 changes[key] = bool(value)
@@ -152,7 +161,8 @@ class Field:
     section: str
     kind: str                         # 'float', 'seconds' (pick from options), 'bool',
                                       # 'characters' (pick several), 'look' (pick one),
-                                      # 'choice' (one of `choices`)
+                                      # 'choice' (one of `choices`), 'memory' (bool + the
+                                      # list of what he remembers)
     help: str = ''
     min: float = 0.0
     max: float = 1.0
@@ -170,6 +180,7 @@ SECTIONS = (
     ('evil', 'Evil mode', '😈'),
     ('dress', 'Dressing up', '🎭'),
     ('voice', 'Voice & talking', '🗣️'),
+    ('personality', 'Personality', '💛'),
     ('brain', 'AI brain', '🧠'),
     ('advanced', 'Advanced', '🔧'),
 )
@@ -214,11 +225,28 @@ FIELDS = (
     Field('wake_word', 'Listen for "Hey Robo"', 'voice', 'bool',
           'Keeps the microphone open so you can just say "Hey Robo". '
           'Everything is understood offline, on this computer.'),
+    Field('chattiness', 'Speaks up on his own', 'personality', 'choice',
+          'Now and then he says hi when you come back, asks how you are, or shares a '
+          'thought. Never during videos, chats or quiet hours.',
+          choices=(('off', 'Never'), ('rarely', 'Rarely'), ('sometimes', 'Sometimes'),
+                   ('often', 'Often'))),
+    Field('break_reminders', 'Remind me to take breaks', 'personality', 'bool',
+          'After a long stretch at the computer he suggests a stretch.'),
+    Field('break_after', 'Break after', 'personality', 'seconds', '',
+          options=(30 * 60, 45 * 60, 60 * 60, 90 * 60, 120 * 60, 180 * 60),
+          depends='break_reminders', fmt=fmt_seconds),
+    Field('quiet_hours', 'Quiet hours', 'personality', 'choice',
+          'No chatter at all during these hours.',
+          choices=(('off', 'None'), ('22-8', '22:00 to 8:00'), ('23-7', '23:00 to 7:00'),
+                   ('21-9', '21:00 to 9:00'), ('18-9', '18:00 to 9:00'))),
+    Field('remember_me', 'Remember things about me', 'personality', 'memory',
+          'Your name and things you tell him, kept on this computer (and told to the AI '
+          'brain while you chat). See and erase it below.'),
     Field('agent', 'Talk through', 'brain', 'choice',
           'Answers your questions with an AI agent, using the login of its own app '
           '(Claude Code, Codex or Gemini CLI): no API key needed, a Claude Pro account '
-          'works. What you say to him is sent to that service. Commands like "dress up" '
-          'or "do a task" still work offline.',
+          'works. What you say to him is sent to that service. With Claude he can also '
+          'do real tasks (right-click → Give me a task), safely sandboxed.',
           choices=(('off', 'Off (just Robo)'), ('claude', 'Claude (Claude Code)'),
                    ('codex', 'ChatGPT (Codex CLI)'), ('gemini', 'Gemini (Gemini CLI)'))),
     Field('verbose', 'Log what he sees', 'advanced', 'bool',

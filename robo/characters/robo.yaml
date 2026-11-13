@@ -53,6 +53,91 @@ gestures:
   # getting around (any character with a `travel:` entry can use these)
   fly:    {back: "1.35 + sin(t * 3) * 0.08", front: -1.65}
   hover:  {back: "0.5 + sin(t * 2) * 0.06", front: "-0.5 - sin(t * 2) * 0.06"}
+  # feelings and pastimes
+  stretch: {back: "2.7 + sin(t * 1.5) * 0.1", front: "-2.7 - sin(t * 1.5) * 0.1"}
+  read:   {back: -0.9, front: 0.9, place: front}
+  juggle: {back: "-0.55 + sin(t * 10) * 0.25", front: "0.55 + sin(t * 10 + 3.1) * 0.25",
+           place: front}
+  hum:    {back: "0.3 + sin(t * 3) * 0.2", front: "-0.3 + sin(t * 3) * 0.2"}
+
+hobbies:
+  # what he does to pass the time (more often when he's bored). Variables in
+  # drawings: `hobby` is the name while he's doing one (see layers.front below).
+  read:   {gesture: read, mood: focus, seconds: 9}
+  juggle: {gesture: juggle, mood: happy, seconds: 6}
+  hum:    {gesture: hum, mood: sing, seconds: 7, particles: hum_notes}
+
+particles:
+  hum_notes:
+    rate: 1.6
+    life: 2.0
+    glyph: note
+    at: ["f * 16", -80]
+    velocity: ["f * rand(8, 18)", "rand(-26, -16)"]
+
+layers:
+  front:
+    - if: hobby == 'read'                      # a little book, pages turning now and then
+      vars: {flip: "clamp(((t % 5) - 4.2) / 0.6)"}
+      group:
+        - {path: "M -15 -45 L 0 -42 L 15 -45 L 15 -29 L 0 -26 L -15 -29 Z", fill: "#B5733E", lw: 2}
+        - {poly: [[-13, -43], [0, -40.5], [0, -28], [-13, -30.5]], fill: "#FFF8E8", lw: 1.4}
+        - {poly: [[13, -43], [0, -40.5], [0, -28], [13, -30.5]], fill: "#FFF8E8", lw: 1.4}
+        - for: {y: [-38, -35, -32]}
+          group:
+            - {line: [[-11, "y - 1.5"], [-3, y]], stroke: "#B4BACB", lw: 1}
+            - {line: [[3, y], [11, "y - 1.5"]], stroke: "#B4BACB", lw: 1}
+        - if: flip > 0 and flip < 1                # turning a page
+          scale: ["cos(flip * pi)", 1]
+          poly: [[0, -40.5], [13, -43], [13, -30.5], [0, -28]]
+          fill: "#FFFDF5"
+          lw: 1.2
+    - if: hobby == 'juggle'                    # three balls going round
+      repeat: 3
+      vars: {a: "t * 5.5 + i * tau / 3"}
+      circle: ["cos(a) * 13", "-62 + sin(a) * 24", 4]
+      fill: {pick: ["#FF5A64", "#FFD23F", "#4DA8FF"], i: i}
+      lw: 1.6
+
+personality:
+  # Who he is. Every character can override any of this (Spider-Man jokes like
+  # Spider-Man). The AI brain reads all of it; without one he uses `lines`.
+  traits: [curious, warm, playful, a little cheeky, easily excited, loyal]
+  speech: >-
+    Short, warm sentences. Says "beep" and "boop" now and then, loves puns and
+    silly robot jokes, gets excited about small things, and asks questions back.
+  likes: [pats on the head, music, shiny things, learning about the user, naps in the sun]
+  dislikes: [being ignored, low batteries, being dragged around when he's tired, Mondays]
+  quirks: [hums when he's happy, yawns loudly when he's sleepy, counts things when he's nervous]
+  lines:
+    # Used when he speaks up on his own and there's no AI brain. "{, name}" becomes
+    # ", Erik" once he knows your name; {minutes} and {time} are filled in.
+    first_meeting: ["Oh! Hello! I'm Robo, I live here now. What's your name?",
+                    "Beep! A human! Hi, I'm Robo. What should I call you?"]
+    morning: ["Good morning{, name}! Ready for a great day?",
+              "Morning{, name}! I saved you a spot on the screen. Beep!",
+              "Yawn... oh! Good morning{, name}!"]
+    welcome_back: ["Welcome back{, name}! I missed you. Beep!",
+                   "You're back{, name}! How was your break?",
+                   "There you are{, name}! I counted {minutes} minutes."]
+    break: ["You've been at it for {minutes} minutes{, name}. How about a little stretch?",
+            "Psst. Time for a break? Water, stretch, look out of the window. Doctor Robo's orders.",
+            "My sensors say you need a break. Want to stretch with me?"]
+    late: ["It's {time}{, name}. Even robots need sleep. Maybe soon?",
+           "Yawn... it's getting late. Don't stay up too long, okay?"]
+    bored: ["Psst... I'm bored. Pat me?", "Beep boop... is anyone there? Hi!",
+            "I've counted all the pixels. Twice. Play with me?"]
+    remark: ["Did you know a group of robots is called a... hmm, I'll have to look that up.",
+             "I just had a great idea! Then it fell out of my antenna.",
+             "Beep. Just checking in. You're doing great!"]
+    question: ["What's your favorite song right now{, name}?",
+               "If you could have any superpower, what would it be?",
+               "What made you smile today?"]
+    sleepy: ["Yawn... I could use a nap.", "My battery feels low. Not yours, mine."]
+    picked_up_happy: ["Wheee!", "Higher! Higher!", "I can see my house from here!"]
+    picked_up_grumpy: ["Hey! Put me down!", "Not now, I'm sleepy...", "Careful, I'm fragile!"]
+    put_down: ["Phew, solid ground.", "Again! No, wait, not again."]
+
 
 parts:
   shadow:
@@ -108,7 +193,7 @@ parts:
   face:
     # ---- eyes
     - for: {bx: [-12, 12]}
-      vars: {ex: "bx + look", ey: -87, side: "-1 if bx < 0 else 1"}
+      vars: {ex: "bx + look", ey: "-87 + look_y", side: "-1 if bx < 0 else 1"}
       choose:
         - if: "mood in ('evil', 'laugh')"        # angry red eyes with a brow
           vars: {h: "max(0.15, openness) * (0.55 if mood == 'laugh' else 1)"}
@@ -122,7 +207,7 @@ parts:
               scale: [1, h]
             - line: [["ex + side * 7", "ey - 11"], ["ex - side * 6", "ey - 6"]]
               stroke: eye_e
-        - if: "mood in ('roar', 'wince')"        # squeezed shut: > <
+        - if: "mood in ('roar', 'wince', 'yawn')"   # squeezed shut: > <
           line: [["ex - side * 5", "ey - 5"], ["ex + side * 4", ey], ["ex - side * 5", "ey + 5"]]
           stroke: eye
           lw: 3
@@ -179,6 +264,10 @@ parts:
               poly: [["fx - 2.2", "my - 2.2"], [fx, "my + 2.2"], ["fx + 2.2", "my - 2.2"]]
               fill: ["#FFFFFF", 0.95]
               stroke: none
+        - if: mood == 'yawn'                      # a big yawn
+          ellipse: [mx, "my - 1", "4.5 + sin(t * 3) * 0.5", "5.5 + sin(t * 2) * 1.5"]
+          fill: eye
+          stroke: none
         - if: "talk > 0.06 and mood not in ('roar', 'sleep')"   # talking: follows his voice
           vars: {w: "3.6 if mood == 'sad' else 4.2"}
           ellipse: [mx, "my - 1.5", "w + talk * 1.5", "0.9 + talk * 4.6"]

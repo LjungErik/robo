@@ -95,7 +95,8 @@ class RoboApp:
         # Tasks run in the platform's sandbox, and ask you via its approver.
         self.robot.task_env = TaskEnvironment(sandbox=platform.sandbox(),
                                               approver=platform.approver(),
-                                              workspace_root=platform.task_dir())
+                                              workspace_root=platform.task_dir(),
+                                              agent_factory=self._task_agent)
         Workspace.prune(platform.task_dir())
 
         # Conversation: RuleBrain for commands, plus an AI agent if one is chosen
@@ -119,6 +120,12 @@ class RoboApp:
         if settings.demo:
             sched.after(DEMO_DELAY, self.robot.demo)
         host.show()
+
+    def _task_agent(self):
+        """A fresh agent backend for a task (separate from the one he chats with)."""
+        from robo.agents import make_backend
+        s = self.settings
+        return make_backend(s.agent, self.platform.agent_dir(), s.agent_model)
 
     # ------------------------------------------------------------ settings
     def open_settings(self):

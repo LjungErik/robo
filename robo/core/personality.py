@@ -243,6 +243,12 @@ def on_reply(robot, reply, now):
     face, body, wardrobe = robot.face, robot.body, robot.wardrobe
     body.stop(now, 30, 40)                 # stand still while chatting
     action = reply.action
+    if reply.user_name:
+        robot.memory.remember_name(reply.user_name)
+    for fact in reply.remember:
+        robot.memory.remember(fact)
+    if action == 'forget':
+        robot.memory.forget(reply.action_arg or 'all')
     if action == 'wave':
         face.show(F.WAVE, now, 2.2)
     elif action == 'cheer':
@@ -271,6 +277,9 @@ def on_reply(robot, reply, now):
         robot.travel.start_kind(robot, reply.action_arg or '', now)
     elif action == 'start_task':
         robot.start_task(reply.action_arg)
+    elif action == 'agent_task' and reply.action_arg:
+        import json
+        robot.start_task('agent', json.loads(reply.action_arg))   # asks you first
     elif action == 'abort_task':
         robot.abort_task(everything=reply.action_arg == 'all')
 
@@ -303,10 +312,15 @@ def on_task_event(robot, event, task, now):
         face.show(F.HAPPY, now, 2.0)
         face.add_hearts(now, (0.2, 0.5))
         robot.review_changes(task)
+        if task.kind == 'agent':                 # tell you what he did
+            robot.conversation.announce(task.result or 'All done!', 'happy')
     elif event == 'failed':
         robot.bubbles.push('warning', now, duration=5.0, dedup=False)
         face.show(F.SWEAT, now, 2.5)
         face.show(F.SURPRISED, now, 0.6)
+        if task.kind == 'agent':
+            robot.conversation.announce(f"Sorry, I couldn't finish that task. {task.error}.",
+                                        'sad')
     elif event == 'aborted':
         face.show(F.SURPRISED, now, 0.5)
 

@@ -18,6 +18,8 @@ class GeminiCli(AgentBackend):
     install_hint = 'Install the Gemini CLI: npm install -g @google/gemini-cli'
     login_hint = 'Open a terminal, run "gemini" and choose Login with Google.'
     remembers = False
+    tasks_unsupported = ("can only chat for now: Gemini CLI's own tools can't be fully "
+                         'switched off yet, so it could read files you did not give it')
 
     def status(self):
         if not self.executable():

@@ -23,7 +23,9 @@ class Pose:
     squash: float = 0.0          # landing squash
     mood: str = 'normal'         # normal happy surprised sleep evil laugh
     openness: float = 1.0        # eyelids (blink)
-    look: float = 0.0            # eye offset
+    look: float = 0.0            # eye offset (left / right)
+    look_y: float = 0.0          # eye offset up / down (following your mouse pointer)
+    hobby: str = ''              # pastime he's busy with ('read', 'juggle', 'hum', ...)
     arms: str = 'rest'           # rest swing wave up scheme
     antenna: str = 'normal'      # normal alert sleep evil
     alert_kind: str = ''         # event kind when antenna == 'alert'
@@ -59,7 +61,13 @@ def _mood(robot, now, looks_evil):
         return 'laugh' if face.active(F.LAUGH, now) else 'evil'
     if body.state == SLEEP:
         return 'sleep'
-    if face.active(F.SURPRISED, now) or body.held:
+    if body.held:                          # picked up: depends on how he feels
+        if face.active(F.GIGGLE, now):
+            return 'happy'
+        if face.active(F.GRUMPY, now):
+            return 'sad'
+        return 'surprised'
+    if face.active(F.SURPRISED, now):
         return 'surprised'
     talk = robot.conversation
     if talk.state == 'speaking' and talk.reply is not None and talk.reply.mood:
@@ -76,11 +84,29 @@ def _mood(robot, now, looks_evil):
         return look_move.mood
     if face.active(F.HAPPY, now):
         return 'happy'
+    if face.active(F.YAWN, now):
+        return 'yawn'
+    if face.active(F.SAD, now):
+        return 'sad'
     if robot.hacker.typing:
         return 'focus'
     if robot.bubbles.open:
         return 'happy'
+    hobby = _hobby(robot, now)
+    if hobby:
+        return hobby.mood
+    if robot.mind.down:
+        return 'sad'
     return 'normal'
+
+
+def _hobby(robot, now):
+    """The Move of the pastime he's busy with, or None."""
+    face = robot.face
+    if face.hobby and face.active(F.HOBBY, now) and robot.wardrobe.current is None \
+            and not robot.hacker.dressed:
+        return robot.hobbies().get(face.hobby)
+    return None
 
 
 def _arms(robot, now, looks_evil):
@@ -97,13 +123,18 @@ def _arms(robot, now, looks_evil):
     look_move = _look_move(robot, now)
     if look_move:
         return look_move.gesture
+    if face.active(F.YAWN, now):
+        return 'stretch'
     if robot.hacker.typing:
         return 'type'
     if face.active(F.ARMS_UP, now) or face.active(F.HAPPY, now):
         return 'up'
     if face.active(F.WAVE, now):
         return 'wave'
-    return 'swing' if body.state == WALK else 'rest'
+    if body.state == WALK:
+        return 'swing'
+    hobby = _hobby(robot, now)
+    return hobby.gesture if hobby else 'rest'
 
 
 def _look_move(robot, now):
@@ -163,6 +194,7 @@ def build_pose(robot, now):
 
     character = robot.wardrobe.current
     hacker = robot.hacker
+    hobby_name = robot.face.hobby if _hobby(robot, now) else ''
     sit = hacker.sit
     lift = body.hop_lift(now) * (1 - sit) + _move_lift(robot, now, t)
     walker = character or robot.look_character
@@ -177,8 +209,10 @@ def build_pose(robot, now):
         t=t, facing=body.facing, walking=body.state == WALK, phase=body.phase,
         dangling=body.held or body.state == HANG or (body.cruising and body.air_kind == 'hang'),
         lift=lift, squash=body.squash(now),
-        mood=mood, openness=face.openness(now),
-        look=face.look if mood == 'normal' else 0.0,
+        mood=mood, openness=face.openness(now) * (robot.mind.eyelids() if mood == 'normal' else 1),
+        look=face.look if mood in ('normal', 'sad') else 0.0,
+        look_y=(2.5 if hobby_name == 'read' else face.look_y if mood in ('normal', 'sad') else 0.0),
+        hobby=hobby_name,
         arms=_arms(robot, now, looks_evil),
         antenna=antenna, alert_kind=bubbles.current.kind if bubbles.current else '', glow=glow,
         shadow=not body.held and not airborne, tilt=_tilt(robot, now, sleeping),

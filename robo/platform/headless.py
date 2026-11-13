@@ -193,6 +193,14 @@ class FakeSandbox(SandboxBackend):
         self.launched.append((spec, proc))
         return proc
 
+    def stdio_command(self, spec):
+        """Tests only: Robo's MCP tool server WITHOUT any isolation, in the work folder."""
+        import sys
+        from robo.sandbox.backend import WORKER_DIR
+        self.launched.append((spec, None))
+        return [sys.executable, '-I', os.path.join(WORKER_DIR, spec.entry),
+                '--root', spec.work_dir], {}
+
 
 class FakeSandboxProcess(SandboxProcess):
     """Understands the 'placeholder' job: works for args['seconds']."""

@@ -166,8 +166,9 @@ Pick one in **Settings → AI brain → Talk through** (or `--agent claude` for 
   password, key or token, and API-key environment variables are not passed on (so it is
   your subscription that answers, not a pay-per-use key). The settings window shows
   whether the chosen app is installed and logged in, and what to run if it isn't.
-- **Talk only, for now.** The agent runs with no tools in an empty folder of Robo's own
-  (`~/.local/share/robo/agent`): it can't read your files, run commands or browse.
+- **Chatting has no tools.** For a chat the agent runs with no tools in an empty folder
+  of Robo's own (`~/.local/share/robo/agent`): it can't read your files, run commands or
+  browse. Real work goes through tasks (above), which are sandboxed.
 - **What stays local:** tasks, goodbye, and short commands ("dress up as a pirate",
   "fly around", "what time is it") are answered by his own brain, instantly and offline.
   Longer requests ("dress up as a pirate and tell me a pirate fact") go to the agent.
@@ -190,31 +191,50 @@ JSON answer into a `Reply`. To add a provider, subclass `AgentBackend` and add i
 
 ## Tasks 💻
 
-Ask Robo to **"do a task"** (or right-click → **Do a task**) and he changes into
-his 80s hacker outfit: walkman headphones, big square glasses and a dark jacket.
-Then he sits down at his beige laptop and types away while green ones and zeros
-fly up. For now the task is a placeholder that takes 1-2 minutes. When it's done
-he cheers and shows a ✅ laptop bubble, then changes back.
+With **Claude** as his AI brain (Settings → AI brain), Robo does real work for you:
+sorting, tidying, summarising, writing, renaming, converting, checking files.
 
-- **Interrupt him** any time: double-click to talk, or pick him up. He stops working,
-  stands up with the laptop under his arm and helps you. When you're done he sits
-  back down and picks up where he left off. Time spent chatting doesn't count.
-- Say **"abort task"** (or "stop the task", or right-click → **Abort task**) and he
-  drops it completely.
-- **"How's the task going?"** tells you how far along he is.
-- Ask for another task while he's busy and it's queued up for after the current one.
-  "Abort all tasks" drops the whole queue.
-- The hacker outfit is only for work: he never picks it at random, doesn't dress up
-  as anything else, and doesn't turn evil while he has a task.
+- **Right-click → Give me a task…** opens a form: type what he should do and pick the
+  files or folders he may **look at** and the ones he may **change**.
+- Or just **tell him**: *"make me a to-do list from the meeting notes in my Documents
+  folder"*. Claude works out the task and which folders it needs, and Robo asks you
+  to approve exactly that first.
+- He changes into his 80s hacker outfit and types away while the agent works.
+  *"How's the task going?"* tells you what he's doing; *"abort task"* stops it.
+- When he's done he **tells you what he did**, and you **review every change** before
+  anything of yours is touched. New files he makes (reports, lists, notes) go to a new
+  folder in `~/Robo/`, also after your review.
+
+**How it stays safe.** The agent's brain and its hands are kept apart:
+
+- **Brain:** Claude Code runs outside the sandbox (it needs the internet and your
+  login), with **all of its own tools switched off**.
+- **Hands:** its only tools are Robo's (read, write, edit, move, list files, run a
+  command), served by `robo/sandbox/worker/mcp_server.py` **inside the sandbox** below.
+  So whatever it decides, it works on copies, in a folder with no internet, nothing of
+  yours but what you granted, and no way to your login or your keys.
+- Your home folder itself and hidden folders in it (`~/.ssh`, keyrings, browser
+  profiles, app logins) can never be granted.
+- **Note:** everything the agent reads is sent to Claude, because that's how it thinks.
+  Only grant what you're happy to share.
+- ChatGPT (Codex) and Gemini can only chat for now: their own shell / file tools can't
+  be fully switched off, so they could read things you didn't give them.
+- Without an AI brain, *"do a task"* still runs the old placeholder (1-2 minutes of
+  pretend hacking).
+- **Interrupt him** any time: double-click to talk, or pick him up. He stops typing and
+  helps you; the agent keeps thinking in the background, and he sits back down after.
+- Ask for another task while he's busy and it's queued. *"Abort all tasks"* drops them all.
+- The hacker outfit is only for work: he doesn't dress up as anything else or turn evil
+  while he has a task.
 
 How it works: `robo/tasks/` is pure logic. `Task` (`base.py`) has the lifecycle
 (start, pause, resume, abort, done, failed), `TaskManager` (`manager.py`) runs
 `max_parallel` tasks at once (1 today), queues the rest, and pauses for each
 interruption reason (`'conversation'`, `'held'`). `catalog.py` lists the kinds of
-task. `robo/core/hacker.py` decides how he looks (outfit, sitting, typing). Its
-outfit is the character file `robo/characters/hacker.yaml`.
+task, `agent_task.py` is the AI agent task. `robo/core/hacker.py` decides how he
+looks (outfit, sitting, typing); the outfit is `robo/characters/hacker.yaml`.
 
-To add a real task:
+To add a hand-written (non-AI) task:
 1. Write its job in `robo/sandbox/worker/jobs.py`. This code runs inside the sandbox.
 2. Add a factory to `TASK_KINDS` in `robo/tasks/catalog.py` that returns a
    `SandboxedTask` with the `Permissions` it needs (default: none).
@@ -343,6 +363,7 @@ robo/
 tests/test_robot.py       python3 -m unittest discover -s tests
 tests/test_characters.py  character files, user characters, flying / hanging / teleporting
 tests/test_agent.py       the AI brain, with fake Claude / Codex / Gemini CLIs
+tests/test_agent_tasks.py agent tasks: the sandboxed MCP tools, a fake agent, the escape test
 tests/test_sandbox.py     sandbox rules, checked inside a real sandbox
 ```
 

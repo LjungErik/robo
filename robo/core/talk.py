@@ -30,6 +30,18 @@ CANT_HEAR = Reply("I'd love to chat, but I can't hear you yet. "
                   'Run the install script to give me ears!', 'sad', end=True)
 
 
+def _describe(p):
+    """A character's personality as one line for the AI brain."""
+    bits = []
+    for key, label in (('traits', 'traits'), ('likes', 'likes'), ('dislikes', 'dislikes'),
+                       ('quirks', 'quirks')):
+        if p.get(key):
+            bits.append(f'{label}: ' + ', '.join(p[key]))
+    if p.get('speech'):
+        bits.append(f"how you talk: {p['speech']}")
+    return '; '.join(bits)
+
+
 class SilentVoice(SpeechOutput):
     """Used when talking out loud is off (or no speech engine exists): his
     mouth still moves and the conversation keeps its rhythm."""
@@ -76,6 +88,7 @@ class Conversation:
         self.turn = 0
         self._wake_word = False
         self._thinking_since = None
+        self._announcements = []
 
     # ------------------------------------------------------------ setup
     def attach(self, brain, voice=None, ears=None):
@@ -114,7 +127,17 @@ class Conversation:
                        task=task.title if task else None,
                        task_progress=task.progress(now) if task else None,
                        tasks_waiting=len(r.tasks.queued),
-                       tasks_unavailable=r.task_env.unavailable_reason())
+                       tasks_unavailable=r.task_env.unavailable_reason(),
+                       agent_tasks=self._agent_tasks(),
+                       task_note=getattr(task, 'note', '') if task else '',
+                       user_name=r.memory.name, feeling=r.mind.feeling(),
+                       memory_text=r.memory.describe(), memory_summary=r.memory.summary(),
+                       remembers=r.memory.enabled, personality=_describe(r.personality()))
+
+    def _agent_tasks(self):
+        backend = getattr(self.brain, 'backend', None)
+        return bool(backend and backend.supports_tasks
+                    and not self.robot.task_env.unavailable_reason())
 
     # ------------------------------------------------------------ control
     def start(self):
@@ -146,6 +169,17 @@ class Conversation:
         self.voice.stop()             # may already finish via _spoken
         if self.active:
             self._finish()
+
+    def announce(self, text, mood='happy'):
+        """Say something on his own (e.g. what a finished task did). Waits for a
+        quiet moment if you're in the middle of a chat."""
+        if not text:
+            return
+        if self.active:
+            self._announcements.append((text, mood))
+            return
+        log.info('announcing: %s', text)
+        self._say(Reply(text, mood, end=True))
 
     def on_wake_word(self):
         log.info('heard the wake word')
@@ -219,6 +253,9 @@ class Conversation:
         personality.on_conversation_ended(self.robot, reply, now)
         if self.ears and self.ears.available:
             self.ears.set_wake_word(self._wake_word, self.on_wake_word)
+        if self._announcements:
+            text, mood = self._announcements.pop(0)
+            self.announce(text, mood)
 
     # ------------------------------------------------------------ per frame
     def update(self, now):

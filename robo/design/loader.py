@@ -16,7 +16,7 @@ from robo.render.interpreter import (Ctx, DrawingError, compile_colour, compile_
                                      compile_palette)
 
 from .expr import ExprError, compile_expr
-from .model import ROLES, TRAVEL_KINDS, Character, Move, Travel
+from .model import LINE_KINDS, ROLES, TRAVEL_KINDS, Character, Move, Travel
 
 try:
     import yaml
@@ -35,7 +35,8 @@ GESTURE_PLACES = ('behind', 'front', 'over_head')
 RIG_KEYS = ('shoulder', 'arm_length', 'neck', 'sit_drop', 'head_top', 'antenna_y')
 TOP_KEYS = {'id', 'name', 'role', 'base', 'order', 'words', 'demand', 'move', 'walk', 'travel',
             'rig', 'palette', 'recolor', 'parts', 'layers', 'antenna_y', 'gestures',
-            'particles', 'about', 'author'}
+            'particles', 'about', 'author', 'personality', 'hobbies'}
+PERSONALITY_LISTS = ('traits', 'likes', 'dislikes', 'quirks')
 GLYPHS = ('note', 'spark', 'star', 'magic', 'heart', 'text')
 
 
@@ -196,6 +197,8 @@ def parse(data, name, default_id):
     words = data.get('words') or ()
     _need(isinstance(words, (list, tuple)), f'{name}: words: expected a list of phrases')
 
+    personality = _personality(data.get('personality'), name)
+
     cf.character = Character(
         id=cid, name=str(data.get('name', '')), role=role, base=str(data.get('base', 'robo')),
         order=float(data.get('order', 1000)),
@@ -204,9 +207,40 @@ def parse(data, name, default_id):
         move=_move(data['move'], 'move') if data.get('move') else None,
         walk_speed=float(walk.get('speed', 1.0)), walk_lift=walk_lift,
         travel=tuple(_travel(t, f'travel[{i}]') for i, t in enumerate(data.get('travel') or ())),
+        personality=personality,
+        hobbies={k: _move(v, f'hobbies.{k}') for k, v in (data.get('hobbies') or {}).items()},
         spec=data,
     )
     return cf
+
+
+def _personality(spec, name):
+    """personality: {traits, speech, likes, dislikes, quirks, hobbies, lines: {kind: [...]}}"""
+    if not spec:
+        return {}
+    _need(isinstance(spec, dict), f'{name}: personality: expected a mapping')
+    allowed = set(PERSONALITY_LISTS) | {'speech', 'lines'}
+    unknown = set(spec) - allowed
+    _need(not unknown, f'{name}: personality: unknown key(s) {", ".join(sorted(unknown))}')
+    out = {}
+    for key in PERSONALITY_LISTS:
+        if key in spec:
+            v = spec[key]
+            _need(isinstance(v, list), f'{name}: personality.{key}: expected a list')
+            out[key] = tuple(str(x) for x in v)
+    if 'speech' in spec:
+        out['speech'] = str(spec['speech'])
+    lines = spec.get('lines') or {}
+    _need(isinstance(lines, dict), f'{name}: personality.lines: expected a mapping')
+    for kind, options in lines.items():
+        _need(kind in LINE_KINDS, f'{name}: personality.lines.{kind}: unknown (kinds are '
+                                  f'{", ".join(LINE_KINDS)})')
+        if isinstance(options, str):
+            options = [options]
+        _need(isinstance(options, list) and options,
+              f'{name}: personality.lines.{kind}: expected a list of lines')
+        out.setdefault('lines', {})[kind] = tuple(str(o) for o in options)
+    return out
 
 
 def _gesture(spec, where):

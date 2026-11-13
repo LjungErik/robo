@@ -8,7 +8,9 @@ from typing import Callable, Optional, Tuple
 ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'laugh',
            'start_task',   # action_arg: task kind (robo.tasks.TASK_KINDS), None = default
            'abort_task',   # action_arg: 'all' to abandon every task, else just the current one
-           'travel')       # action_arg: 'fly', 'hang' or 'teleport' ('' = whatever he can)
+           'travel',       # action_arg: 'fly', 'hang' or 'teleport' ('' = whatever he can)
+           'agent_task',   # action_arg: JSON {"goal": ..., "read": [paths], "write": [paths]}
+           'forget')       # action_arg: 'all', or a word: forget the facts that mention it
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,8 @@ class Reply:
     action: Optional[str] = None     # one of ACTIONS
     action_arg: Optional[str] = None  # e.g. the character for 'dress_up'
     end: bool = False                # end the conversation after saying this
+    remember: Tuple[str, ...] = ()   # facts about you to keep (robo.core.memory)
+    user_name: Optional[str] = None  # you told him your name
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,14 @@ class Context:
     task_progress: Optional[float] = None         # 0..1 if known
     tasks_waiting: int = 0                        # tasks queued up after the current one
     tasks_unavailable: Optional[str] = None       # why he can't do tasks safely here
+    agent_tasks: bool = False                     # his AI agent can do real tasks
+    user_name: str = ''                           # what to call you ('' = don't know yet)
+    feeling: str = 'fine'                         # how he feels (robo.core.mind)
+    memory_text: str = ''                         # "I remember that..." (spoken)
+    memory_summary: str = ''                      # what he remembers, for the AI brain
+    remembers: bool = True                        # memory switched on
+    personality: str = ''                         # who he is right now, for the AI brain
+    task_note: str = ''                           # what the task is doing right now
 
 
 class Brain(ABC):

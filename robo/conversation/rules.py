@@ -80,6 +80,19 @@ class RuleBrain(Brain):
             ('how_are_you', _words('how are you', 'how are you doing', "how's it going",
                                    'how do you feel', 'are you okay', 'are you ok'),
              self.how_are_you),
+            # memory first: "my name is ..." must not be heard as a question about his name
+            ('forget', _words('forget everything', 'forget me', 'forget all', 'forget that',
+                              'forget about', 'erase your memory', 'delete your memory'),
+             self.forget),
+            ('what_remember', _words('what do you remember', 'what do you know about me',
+                                     'do you remember me', 'what you remember'),
+             self.what_remember),
+            ('remember_name', re.compile(r"\b(my name is|my name's|call me|i'm called)\s+"
+                                         r"([a-z][a-z' -]{0,30})"), self.remember_name),
+            ('what_my_name', _words("what's my name", 'what is my name', 'do you know my name',
+                                    'who am i'), self.what_my_name),
+            ('remember_fact', re.compile(r'\b(remember that|please remember|don\'t forget that)'
+                                         r'\s+(.{3,150})'), self.remember_fact),
             ('name', _words('your name', 'who are you', 'what are you called'), self.name),
             ('abilities', _words('what can you do', 'help', 'what do you do', 'abilities',
                                  'commands'), self.abilities),
@@ -127,6 +140,11 @@ class RuleBrain(Brain):
         if ctx.costume:
             who = characters.title(ctx.costume).lower()
             return Reply(f'Beep boop! The {who} is listening. What can I do for you?',
+                         'happy', action='wave')
+        if ctx.user_name:
+            n = ctx.user_name
+            return Reply(self._pick(f'Hi {n}! I am listening!', f'Hey {n}! What is up?',
+                                    f'{n}! You want to chat? I love chatting with you!'),
                          'happy', action='wave')
         return Reply(self._pick('Beep boop! I am listening!', 'Hi there! What is up?',
                                 'Bip bip! You want to chat? I love chatting!'),
@@ -177,9 +195,60 @@ class RuleBrain(Brain):
                          icon='battery_low')
         if ctx.evil:
             return Reply('Wonderful. Everything is going according to plan. Mwahaha!', 'laugh')
+        if 'sleepy' in ctx.feeling:
+            return Reply(self._pick('Honestly? Very sleepy. *yawn* But happy you asked!',
+                                    'My battery feels low... not yours, mine. Yawn!'), 'sleep')
+        if 'tired' in ctx.feeling:
+            return Reply('A bit tired, but talking to you perks me up! How are you?', 'normal')
+        if 'sad' in ctx.feeling or 'bored' in ctx.feeling:
+            return Reply("A little lonely, to be honest. But now you're here! How are you?",
+                         'sad', action='hearts')
         return Reply(self._pick('I feel fantastic! My circuits are all tingly!',
                                 'Super! I had a lovely walk across your screen.',
                                 'Beep beep, I am great! How are you?'), 'happy', icon='heart')
+
+    # ------------------------------------------------------------ memory
+    def remember_name(self, text, ctx):
+        m = re.search(r"\b(my name is|my name's|call me|i'm called)\s+([a-z][a-z' -]{0,30})",
+                      text)
+        name = m.group(2).split(' and ')[0].strip().title() if m else ''
+        if not name:
+            return self.fallback(text, ctx)
+        if not ctx.remembers:
+            return Reply(f'Nice to meet you, {name}! My memory is switched off, so I might '
+                         'forget, sorry.', 'happy', action='wave')
+        if ctx.user_name and ctx.user_name.lower() == name.lower():
+            return Reply(f'I know, {name}! I remember you.', 'happy', action='hearts')
+        return Reply(self._pick(f'Nice to meet you, {name}! I will remember that. Beep!',
+                                f'{name}! What a great name. Saved in my memory chip!'),
+                     'happy', action='wave', user_name=name)
+
+    def what_my_name(self, text, ctx):
+        if ctx.user_name:
+            return Reply(f'You are {ctx.user_name}, of course! Beep!', 'happy', action='hearts')
+        return Reply("I don't know your name yet! What should I call you?", 'surprised')
+
+    def remember_fact(self, text, ctx):
+        m = re.search(r"\b(remember that|please remember|don't forget that)\s+(.{3,150})", text)
+        fact = m.group(2).strip(' .!') if m else ''
+        if not fact or not ctx.remembers:
+            return Reply("I can't remember things right now, my memory is switched off.", 'sad')
+        fact = re.sub(r'^i\b', 'they', fact)            # "I have a cat" -> about you
+        fact = re.sub(r'\bmy\b', 'their', fact)
+        return Reply(self._pick('Got it, I will remember that!', 'Saved! Beep boop.'),
+                     'happy', action='hearts', remember=(fact,))
+
+    def what_remember(self, text, ctx):
+        return Reply(ctx.memory_text or "I don't remember anything about you yet.", 'focus')
+
+    def forget(self, text, ctx):
+        m = re.search(r'\bforget (?:that|about)\s+(.{2,60})', text)
+        if m:
+            what = m.group(1).strip(' .!')
+            return Reply(f'Okay, I forgot about {what}. Poof!', 'normal', action='forget',
+                         action_arg=what)
+        return Reply("Okay. Wiping my memory... Who are you again? Just kidding. It's all gone.",
+                     'surprised', action='forget', action_arg='all')
 
     def name(self, text, ctx):
         return Reply("I'm Robo! Your little desktop buddy. Beep boop!", 'happy', action='cheer')
@@ -222,7 +291,8 @@ class RuleBrain(Brain):
         waiting = (f' And {ctx.tasks_waiting} more waiting after that.'
                    if ctx.tasks_waiting else '')
         if ctx.task_progress is None:
-            return Reply(f"I'm still working on it!{waiting}", 'focus')
+            doing = f' Right now: {ctx.task_note}.' if ctx.task_note else ''
+            return Reply(f"I'm still working on it!{doing}{waiting}", 'focus')
         pct = int(ctx.task_progress * 100)
         return Reply(f"I'm about {pct} percent done. I'll finish once we're done chatting!"
                      f'{waiting}', 'focus')
