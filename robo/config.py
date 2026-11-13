@@ -35,6 +35,8 @@ class Settings:
     dress_up_every: float = 45.0        # about how often he dresses up as a character
     characters: Tuple[str, ...] = ALL   # who he may dress up as
     look: str = 'robo'                  # what he looks like normally (a base design or character)
+    design_outfits: bool = False        # designs new outfits for himself now and then (AI brain)
+    design_every: float = 3 * 86400     # ...about this often
     voice: bool = True                  # speak answers out loud
     voice_pitch: float = 75.0           # 0..99, higher = squeakier
     voice_speed: float = 1.0            # speaking speed multiplier
@@ -47,7 +49,9 @@ class Settings:
     quiet_hours: str = 'off'            # no chatter in these hours, e.g. '22-8'
     remember_me: bool = True            # keep a memory of you (name, things you told him)
     agent: str = OFF                    # AI brain: 'off', 'claude', 'codex' or 'gemini'
-    agent_model: str = ''               # model for the agent CLI ('' = its own default)
+    agent_model: str = ''               # model for chatting ('' = the agent CLI's own default)
+    task_model: str = ''                # model for tasks and outfit designs ('' = its default)
+    daily_budget: str = 'off'           # tokens a day for things he does on his own
     verbose: bool = False               # log events
     demo: bool = False                  # show every icon once at start-up (not saved)
 
@@ -60,7 +64,7 @@ class Settings:
                 put(f.key, min(max(float(value), f.min), f.max))
             elif f.kind == 'seconds':
                 put(f.key, float(value))
-            elif f.kind in ('bool', 'memory'):
+            elif f.kind in ('bool', 'memory', 'designs'):
                 put(f.key, bool(value))
         # "--evil-after 0" / "--dress-up-every 0" mean "off"
         if self.evil_after <= 0:
@@ -86,6 +90,7 @@ class Settings:
                     getattr(self, f.key) not in [v for v, _l in f.choices]:
                 put(f.key, getattr(Settings, f.key))
         put('agent_model', str(self.agent_model or '').strip())
+        put('task_model', str(self.task_model or '').strip())
         look = str(self.look or characters.DEFAULT_LOOK)
         put('look', look if look in characters.look_ids() else characters.DEFAULT_LOOK)
 
@@ -94,6 +99,11 @@ class Settings:
     def effective_evil_after(self):
         """Seconds before turning evil, 0 when evil mode is off."""
         return self.evil_after if self.evil_mode else 0.0
+
+    @property
+    def budget_tokens(self):
+        """Tokens a day for his own ideas, or None for no limit."""
+        return None if self.daily_budget == 'off' else int(self.daily_budget)
 
     @property
     def effective_dress_up_every(self):
@@ -126,7 +136,8 @@ class Settings:
                     seen = data.get('known_characters', LEGACY_KNOWN_CHARACTERS)
                     new = [c for c in all_characters() if c not in set(seen)]
                     changes[key] = tuple(chosen) + tuple(new)
-            elif key in ('look', 'agent', 'agent_model', 'chattiness', 'quiet_hours'):
+            elif key in ('look', 'agent', 'agent_model', 'task_model', 'chattiness',
+                         'quiet_hours', 'daily_budget'):
                 changes[key] = str(value)
             elif isinstance(getattr(base, key), bool):
                 changes[key] = bool(value)
@@ -161,7 +172,9 @@ class Field:
     section: str
     kind: str                         # 'float', 'seconds' (pick from options), 'bool',
                                       # 'characters' (pick several), 'look' (pick one),
-                                      # 'choice' (one of `choices`), 'memory' (bool + the
+                                      # 'choice' (one of `choices`), 'model' (one of the
+                                      # AI brain's MODELS), 'designs' (bool + his
+                                      # own outfits), 'memory' (bool + the
                                       # list of what he remembers)
     help: str = ''
     min: float = 0.0
@@ -180,6 +193,7 @@ SECTIONS = (
     ('bubbles', 'Speech bubbles', '💬'),
     ('evil', 'Evil mode', '😈'),
     ('dress', 'Dressing up', '🎭'),
+    ('designs', 'His own designs', '✏️'),
     ('voice', 'Voice & talking', '🗣️'),
     ('personality', 'Personality', '💛'),
     ('brain', 'AI brain', '🧠'),
@@ -189,7 +203,7 @@ SECTIONS = (
 TABS = (
     # id, title, emoji, the SECTIONS shown on that tab (as cards, in this order)
     ('general', 'General', '🤖', ('robo', 'bubbles', 'advanced')),
-    ('characters', 'Characters', '🎭', ('look', 'dress')),
+    ('characters', 'Characters', '🎭', ('look', 'dress', 'designs')),
     ('voice', 'Voice', '🗣️', ('voice',)),
     ('personality', 'Personality', '💛', ('personality', 'evil')),
     ('brain', 'AI brain', '🧠', ('brain',)),
@@ -221,6 +235,15 @@ FIELDS = (
           depends='dress_up', fmt=fmt_seconds),
     Field('characters', 'Characters', 'dress', 'characters', 'Who he is allowed to become.',
           depends='dress_up'),
+    Field('design_outfits', 'Design new outfits on his own', 'designs', 'designs',
+          'Now and then, when he has nothing to do, he sits down at his laptop and designs '
+          'himself a brand-new outfit with the Claude AI brain (it uses your Claude account). '
+          'You can always ask him: "design yourself a disco outfit". Everything he made is '
+          'listed below.'),
+    Field('design_every', 'At most', 'designs', 'seconds', '',
+          options=(86400, 2 * 86400, 3 * 86400, 7 * 86400, 14 * 86400),
+          depends='design_outfits', fmt=lambda v: 'once a day' if v <= 86400 else
+          f'every {v / 86400:.0f} days'),
     Field('voice', 'Talk out loud', 'voice', 'bool',
           'Double-click Robo (or right-click → Talk to me) to chat.'),
     Field('voice_pitch', 'Voice pitch', 'voice', 'float', 'From deep bot to squeaky bot.',
@@ -259,6 +282,17 @@ FIELDS = (
           'do real tasks (right-click → Give me a task), safely sandboxed.',
           choices=(('off', 'Off (just Robo)'), ('claude', 'Claude (Claude Code)'),
                    ('codex', 'ChatGPT (Codex CLI)'), ('gemini', 'Gemini (Gemini CLI)'))),
+    Field('agent_model', 'Model for chatting', 'brain', 'model',
+          'Short chats don\'t need the biggest model: a lighter one answers faster and '
+          'makes your plan last much longer.'),
+    Field('task_model', 'Model for tasks and designs', 'brain', 'model',
+          'Real tasks and outfit designs are harder: a smarter model does them better.'),
+    Field('daily_budget', 'Daily budget for his own ideas', 'brain', 'choice',
+          'Things he does on his own (chatting up, designing outfits) use the AI brain only '
+          'until he has used this many tokens today; after that he uses his own rule book. '
+          'Anything you ask him always works. The usage below counts everything.',
+          choices=(('off', 'No limit'), ('25000', '25 thousand'), ('100000', '100 thousand'),
+                   ('250000', '250 thousand'), ('1000000', '1 million'))),
     Field('verbose', 'Log what he sees', 'advanced', 'bool',
           'Prints notifications and decisions to the terminal.'),
 )

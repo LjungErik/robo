@@ -16,8 +16,14 @@ ROLES = ('base', 'costume', 'work')
 # (or nothing if he doesn't know your name yet).
 LINE_KINDS = ('first_meeting', 'morning', 'welcome_back', 'break', 'late', 'bored', 'remark',
               'question', 'sleepy', 'picked_up_happy', 'picked_up_grumpy', 'put_down',
-              'task_started', 'hobby')
+              'task_started', 'hobby', 'dressed_up')
 TRAVEL_KINDS = ('fly', 'hang', 'teleport')
+# Situations an outfit suits (`wear:` in a file); Robo likes to wear it then.
+# What each one means is in robo/core/outfits.py.
+WEAR_SITUATIONS = ('morning', 'lunch', 'afternoon', 'evening', 'night', 'monday', 'friday',
+                   'weekend', 'spring', 'summer', 'autumn', 'winter', 'halloween', 'christmas',
+                   'new_year', 'valentine', 'happy', 'sad', 'bored', 'tired', 'music', 'mail',
+                   'chat', 'meeting', 'fixing', 'working', 'back', 'video')
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,7 @@ class Character:
     base: str = 'robo'               # the base design a costume is drawn on when used as a look
     order: float = 1000.0            # position in lists (settings window)
     words: Tuple[str, ...] = ()      # what people say to ask for him ("dress up as ...")
+    wear: Tuple[str, ...] = ()       # situations he likes to wear it in (WEAR_SITUATIONS)
     demand: str = ''                 # bubble icon id he demands while dressed up
     move: Optional[Move] = None
     walk_speed: float = 1.0

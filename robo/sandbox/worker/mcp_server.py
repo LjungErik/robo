@@ -13,6 +13,7 @@ change, which you review afterwards).
 
 Standard library only, like the rest of the worker.
 """
+import base64
 import json
 import os
 import subprocess
@@ -27,6 +28,8 @@ EVENTS = os.path.join(ROOT, '.robo', 'events.jsonl')
 MAX_READ = 200_000                            # characters per read_file
 MAX_OUTPUT = 20_000                           # characters of command output
 COMMAND_TIMEOUT = 120
+MAX_IMAGE_BYTES = 4_000_000
+IMAGE_TYPES = {b'\x89PNG': 'image/png', b'\xff\xd8\xff': 'image/jpeg'}
 SERVER = {'name': 'robo', 'version': '1.0'}
 
 INSTRUCTIONS = """\
@@ -66,6 +69,8 @@ TOOLS = [
           {'command': {'type': 'string'},
            'timeout': {'type': 'integer', 'description': f'seconds, max {COMMAND_TIMEOUT}'}},
           ['command']),
+    _tool('look_at_image', 'Look at a PNG or JPEG picture in the work folder (for example a '
+          'preview you drew).', {'path': {'type': 'string'}}, ['path']),
     _tool('report_progress', 'Tell the user (through Robo) what you are doing now.',
           {'note': {'type': 'string'},
            'fraction': {'type': 'number', 'description': '0..1, how far along you think you are'}},
@@ -208,6 +213,23 @@ def run_command(command, timeout=60):
     return f'exit code {r.returncode}\n{out}'
 
 
+class Image:
+    def __init__(self, data, mime):
+        self.data, self.mime = data, mime
+
+
+def look_at_image(path):
+    p = _path(path, must_exist=True)
+    if os.path.getsize(p) > MAX_IMAGE_BYTES:
+        raise ToolError(f'{path} is too big to look at (max {MAX_IMAGE_BYTES // 1_000_000} MB)')
+    with open(p, 'rb') as f:
+        data = f.read()
+    mime = next((m for magic, m in IMAGE_TYPES.items() if data.startswith(magic)), None)
+    if mime is None:
+        raise ToolError(f'{path} is not a PNG or JPEG picture')
+    return Image(data, mime)
+
+
 def report_progress(note, fraction=None):
     _event(tool='report_progress', note=str(note)[:300],
            fraction=None if fraction is None else max(0.0, min(1.0, float(fraction))))
@@ -216,7 +238,8 @@ def report_progress(note, fraction=None):
 
 HANDLERS = {'list_files': list_files, 'read_file': read_file, 'write_file': write_file,
             'edit_file': edit_file, 'move': move, 'delete': delete, 'make_folder': make_folder,
-            'run_command': run_command, 'report_progress': report_progress}
+            'run_command': run_command, 'look_at_image': look_at_image,
+            'report_progress': report_progress}
 
 
 # ---------------------------------------------------------------- MCP
@@ -250,7 +273,12 @@ def handle(msg):
             text, is_error = f'bad arguments: {e}', True
         except OSError as e:
             text, is_error = f'{type(e).__name__}: {e.strerror or e}', True
-        result = {'content': [{'type': 'text', 'text': str(text)}], 'isError': is_error}
+        if isinstance(text, Image):
+            content = [{'type': 'image', 'data': base64.b64encode(text.data).decode('ascii'),
+                        'mimeType': text.mime}]
+        else:
+            content = [{'type': 'text', 'text': str(text)}]
+        result = {'content': content, 'isError': is_error}
     else:
         return _error(mid, -32601, f'unknown method {method}')
     return {'jsonrpc': '2.0', 'id': mid, 'result': result}

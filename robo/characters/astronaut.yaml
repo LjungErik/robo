@@ -3,6 +3,7 @@ id: astronaut
 name: Astronaut
 order: 80
 words: [astronaut, space, spaceman]
+wear: [night, bored, winter]
 
 move: {gesture: float, mood: happy, seconds: 4.5, particles: stars, lift: "16 + sin(t * 2) * 6"}
 walk: {speed: 0.8, gallop: true}            # moon bounce

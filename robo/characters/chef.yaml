@@ -3,6 +3,7 @@ id: chef
 name: Chef
 order: 70
 words: [chef, cook]
+wear: [lunch, evening]
 
 move: {gesture: flip, mood: happy, seconds: 3.6}
 antenna_y: -150

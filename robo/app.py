@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 
+from robo.agents.usage import LEDGER
 from robo.config import Settings
 from robo.conversation import AgentBrain, RuleBrain
 from robo.core.companion import Companion
@@ -103,6 +104,10 @@ class RoboApp:
         # in settings (Claude / ChatGPT / Gemini through their own logged-in CLI).
         if store is not None:                  # a real run: his memory lives in a file
             self.robot.memory.use_file(os.path.join(platform.data_dir(), 'memory.json'))
+            self.robot.taste.use_file(os.path.join(platform.data_dir(), 'outfits.json'))
+            LEDGER.use_file(os.path.join(platform.data_dir(), 'usage.json'))   # AI tokens
+            self.robot.task_env.designs_dir = designs_dir(platform)   # outfits he designs
+            self.robot.on_new_outfit = self._new_outfit
         self.brain = AgentBrain(RuleBrain(), workdir=platform.agent_dir())
         self.brain.configure(settings)
         self.robot.conversation.battery = platform.battery_percent
@@ -127,11 +132,17 @@ class RoboApp:
         """A fresh agent backend for a task (separate from the one he chats with)."""
         from robo.agents import make_backend
         s = self.settings
-        return make_backend(s.agent, self.platform.agent_dir(), s.agent_model)
+        return make_backend(s.agent, self.platform.agent_dir(), s.task_model)
+
+    def _new_outfit(self, cid):
+        """He designed himself a new outfit: it's one he may wear from now on."""
+        if cid not in self.settings.characters:
+            self.apply(self.settings.with_changes(characters=self.settings.characters + (cid,)))
 
     # ------------------------------------------------------------ settings
     def open_settings(self):
-        self.platform.open_settings(self.settings, self.apply, self.robot.memory)
+        self.platform.open_settings(self.settings, self.apply, self.robot.memory,
+                                    designs=self.robot.task_env.designs_dir)
 
     def apply(self, settings, save=True):
         """Use new settings right away (and remember them)."""
@@ -168,6 +179,11 @@ def characters_dir(platform):
     return os.path.join(platform.config_dir(), 'characters')
 
 
+def designs_dir(platform):
+    """Where the outfits he designs himself go (~/.config/robo/characters/robo-made)."""
+    return os.path.join(characters_dir(platform), 'robo-made')
+
+
 def build_companion(settings, platform):
     """Robot + platform without a settings file (used by tests and previews)."""
     return RoboApp(settings, platform).robot
@@ -182,12 +198,14 @@ def main(argv=None):
         files = overrides.pop('check')
         if not files:                          # everything, including your own folder
             REGISTRY.add_directory(characters_dir(load_platform('headless')))
+            REGISTRY.add_directory(designs_dir(load_platform('headless')))
         return 1 if check(files) else 0
     platform = load_platform(platform_name)
     if not platform.acquire_single_instance():
         print('Robot companion is already running.')
         return 0
     REGISTRY.add_directory(characters_dir(platform))       # your own characters
+    REGISTRY.add_directory(designs_dir(platform))          # ...and his own designs
     store = SettingsStore(platform.config_dir())
     settings = store.load().with_changes(**overrides)
     _set_log_level(settings)

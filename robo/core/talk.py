@@ -12,6 +12,7 @@ SpeechInput); the brain is any robo.conversation.Brain.
 import logging
 from datetime import datetime
 
+from robo.agents.usage import LEDGER
 from robo.conversation import Context, Reply
 from robo.platform.base import SpeechOutput, Utterance
 
@@ -120,6 +121,7 @@ class Conversation:
         r = self.robot
         task = r.tasks.current
         now = r.clock()
+        pick = r.pick_outfit(now)
         return Context(now=datetime.now(), battery=self.battery(),
                        costume=r.wardrobe.current.id if r.wardrobe.current else None,
                        evil=r.evil.active, characters=tuple(r.settings.characters),
@@ -133,7 +135,12 @@ class Conversation:
                        task_note=getattr(task, 'note', '') if task else '',
                        user_name=r.memory.name, feeling=r.mind.feeling(),
                        memory_text=r.memory.describe(), memory_summary=r.memory.summary(),
-                       remembers=r.memory.enabled, personality=_describe(r.personality()))
+                       remembers=r.memory.enabled, personality=_describe(r.personality()),
+                       usage_text=LEDGER.spoken(),
+                       outfit_choice=pick.id if pick else None,
+                       outfit_because=pick.because if pick else '',
+                       favourite_outfits=tuple(r.taste.favourites(
+                           c.id for c in r.outfit_candidates())))
 
     def _agent_tasks(self):
         backend = getattr(self.brain, 'backend', None)

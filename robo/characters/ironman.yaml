@@ -6,6 +6,7 @@ id: ironman
 name: Iron Man
 order: 200
 words: [iron man, ironman, tony stark, tony, avenger]
+wear: [working, fixing, happy]
 
 move: {gesture: repulsor, mood: focus, seconds: 3.0, particles: repulsor}
 walk: {speed: 1.1}

@@ -3,6 +3,7 @@ id: viking
 name: Viking
 order: 30
 words: [viking]
+wear: [winter, friday, new_year]
 
 move: {gesture: roar, mood: roar, seconds: 2.2}
 antenna_y: -122

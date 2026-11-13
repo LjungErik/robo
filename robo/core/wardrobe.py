@@ -1,7 +1,8 @@
 """Wardrobe: when Robo dresses up, who as, and his signature moves.
 
 Every `every_seconds` (randomised) he vanishes in a puff of smoke and
-comes back as a random character. He stays dressed up until he is clicked.
+comes back as a character he picked himself (robo.core.outfits decides who;
+without a choice it's a random one). He stays dressed up until he is clicked.
 Clothes are swapped halfway through the poof so the change is hidden.
 """
 from . import characters
@@ -22,6 +23,8 @@ class Wardrobe:
         self._swap_at = None
         self.move_start = -10.0
         self.move_until = 0.0
+        self.choice = None           # outfits.Choice if he picked it himself
+        self.dressed_at = 0.0
         self.next_change = now + self._wait()
 
     def _wait(self):
@@ -56,7 +59,7 @@ class Wardrobe:
             self.next_change = now + self._wait()
         self.allowed = tuple(allowed)
 
-    def dress_up(self, now, character_id=None, exclude=()):
+    def dress_up(self, now, character_id=None, exclude=(), choice=None):
         """Poof into a character (random one from `allowed` if none given).
         Returns False if there is no such character."""
         known = characters.costume_ids()
@@ -70,6 +73,7 @@ class Wardrobe:
         character = characters.get(character_id)
         if character is None or character.role != 'costume':
             return False
+        self.choice = choice
         self._begin_poof(now, character)
         return True
 
@@ -116,7 +120,9 @@ class Wardrobe:
         if target:
             self.current = target
             self.last_id = target.id
+            self.dressed_at = now
             return 'dressed'
         self.current = None
+        self.choice = None
         self.next_change = now + self._wait()
         return 'undressed'

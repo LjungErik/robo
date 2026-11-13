@@ -47,6 +47,7 @@ name: Duck               # shown in Settings
 role: costume            # base | costume | work
 order: 300               # position in the Settings lists (smaller = earlier)
 words: [duck, ducky]     # "dress up as a ducky" (speech recognition hears plain words)
+wear: [summer, music]    # when he likes to wear it (see "Picking what to wear")
 
 move:                    # signature move, done now and then while dressed up
   gesture: flap          # arm gesture (see gestures)
@@ -249,6 +250,51 @@ bored): each is a move (`gesture`, `mood`, `seconds`, optional `particles`). Whi
 does one, drawings can check the variable `hobby` (`robo.yaml` draws a book for
 `hobby == 'read'` and juggling balls for `'juggle'`). Eyes can use `look_y` (he looks
 up / down at your mouse pointer) as well as `look`.
+
+## Picking what to wear
+
+Robo chooses his outfits himself. When it's time to dress up, every costume
+ticked in Settings gets a score and he picks one by weighted chance:
+
+- **The situation.** `wear:` lists the moments the outfit suits; each one that's
+  true right now makes it more likely (two at most count).
+- **His taste.** Every outfit starts with a small built-in liking, so he has
+  favourites from day one. Chatting with him or complimenting him while he wears
+  it, or asking for it by name, makes him like it more. Clicking him out of it
+  within 20 seconds makes him like it less. His taste is kept in
+  `~/.local/share/robo/outfits.json`.
+
+When he picked it for a reason he sometimes says why (more often the chattier he
+is, never in quiet hours): the `dressed_up` line, with `{outfit}` and `{because}`
+("it's winter"). "Wear whatever you like" lets him pick while you chat.
+
+| situation | true when |
+|---|---|
+| `morning` `lunch` `afternoon` `evening` `night` | 5-11, 11-14, 14-18, 18-22, 22-5 |
+| `monday` `friday` `weekend` | the day of the week |
+| `spring` `summer` `autumn` `winter` | the season (northern hemisphere) |
+| `halloween` `christmas` `new_year` `valentine` | Oct 20 - Nov 1, Dec 1-26, Dec 31 - Jan 1, Feb 14 |
+| `happy` `sad` `bored` `tired` | how he feels |
+| `music` `mail` `chat` `meeting` `fixing` | a notification like that in the last 15 minutes (`fixing`: updates / restart) |
+| `working` | you've been at the computer for an hour without a break |
+| `back` | you came back from a break in the last 15 minutes |
+| `video` | a video or presentation is keeping the screen awake |
+
+## His own designs
+
+With the Claude AI brain he can design new outfits himself: ask him ("design
+yourself a disco knight outfit", or just "design a new outfit"), or switch on
+**Settings → Characters → Design new outfits on his own** (at most once a day
+to every two weeks, using your Claude account).
+
+He works on it at his laptop for a few minutes. Claude gets only a design kit:
+this README, a few example files, the list of outfits that already exist, and
+the checker. None of your files, and no internet. It writes the file, runs the
+checker, looks at the preview picture and improves it. Robo then checks the file
+again himself, and only one that loads and draws without a single problem is
+kept. It goes to `~/.config/robo/characters/robo-made/` and he puts it on right
+away. Edit those files like any other, or remove one in Settings (it goes to
+the trash).
 
 ## Particles
 

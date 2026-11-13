@@ -52,6 +52,7 @@ class Initiative:
         self._break_said = False
         self._late_said_on = None
         self._next_roll = 0.0
+        self.came_back_at = None          # when you last came back from a break
 
     # ------------------------------------------------------------ you
     def on_idle(self, idle_seconds, now, memory=None):
@@ -68,6 +69,8 @@ class Initiative:
             self._break_said = False
             seen = memory.saw_you() if memory is not None else None
             hour = self.now_dt().hour
+            if gap >= WELCOME_AFTER:
+                self.came_back_at = now
             if seen == 'first':
                 self.pending.append(('first_meeting', {}))
             elif (seen == 'new_day' or gap >= NEW_DAY_AFTER) and 5 <= hour < 12:
@@ -154,6 +157,9 @@ SITUATIONS = {
              'for a little attention.',
     'remark': 'Make a small spontaneous remark: a thought, a fun fact, or something about '
               'your day. Keep it light.',
+    'dressed_up': 'You just picked an outfit yourself and poofed into it: you are now '
+                  'the {outfit}. Your reason: {because}. Show it off and say why you '
+                  'picked it, in your new character.',
     'question': 'Ask the user one friendly question to get to know them better (about '
                 "something you don't know yet).",
 }

@@ -3,6 +3,7 @@ id: pirate
 name: Pirate
 order: 100
 words: [pirate]
+wear: [music, weekend, summer, friday]
 
 move: {gesture: jig, mood: happy, seconds: 3.5, particles: notes, lift: "abs(sin(t * 8)) * 6"}
 antenna_y: -140

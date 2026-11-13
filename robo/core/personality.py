@@ -4,8 +4,12 @@ This is the file to edit to change Robo's character: how often he naps,
 waves or walks, what he does when dressed up, and how he reacts when a
 bubble pops up, you pat him, or he changes clothes.
 """
-from . import characters
+import logging
+
+from . import characters, outfits
 from . import face as F
+
+log = logging.getLogger(__name__)
 
 TASK_DONE_ICON = 'task_done'
 
@@ -74,6 +78,8 @@ def _next_good_action(robot, now):
         robot.face.show(F.YAWN, now, 2.5)
         body.rest(now, 3, 5)
         return
+    if maybe_design(robot, now, bored=mind.bored):
+        return
     if maybe_pastime(robot, now, bored=mind.bored):
         return
     look = robot.look_character
@@ -130,6 +136,28 @@ def on_speak_up(robot, kind, now):
         face.show(F.SAD, now, 2.0)
     else:
         face.show(F.HAPPY, now, 1.0)
+
+
+DESIGN_CHANCE = 0.05            # per free moment, once a design is due (more when bored)
+
+
+def maybe_design(robot, now, bored=False):
+    """Designing himself a new outfit, on his own (Settings: Characters). True if he did."""
+    from .initiative import in_quiet_hours
+    if robot.rng.random() > (DESIGN_CHANCE * 3 if bored else DESIGN_CHANCE):
+        return False
+    if not robot.mind.user_here or robot.wardrobe.current or \
+            in_quiet_hours(robot.settings.quiet_hours, robot.initiative.now_dt().hour) or \
+            not robot.design_due():
+        return False
+    log.info('feels like designing a new outfit')
+    robot.face.show(F.SURPRISED, now, 0.6)            # an idea!
+    robot.face.show(F.ARMS_UP, now, 1.0)
+    robot.design_outfit(own=True)
+    if robot.settings.chattiness != 'off':
+        robot.conversation.announce("Ooh, I've got an idea for a new outfit! "
+                                    'Give me a few minutes at my laptop.', 'happy')
+    return True
 
 
 def maybe_pastime(robot, now, bored=False):
@@ -247,12 +275,38 @@ def should_dress_up(robot, now):
 
 def on_dressed(robot, now):
     body, face = robot.body, robot.face
+    robot.taste.wore(robot.wardrobe.current.id)
     robot.travel.check(robot)
     face.show(F.HAPPY, now, 1.5)
     face.show(F.ARMS_UP, now, 1.0)
     body.hop(now)
     body.rest(now, 3, 5)
     demand(robot, now)                     # first thing he does: make demands
+    _say_why_this_outfit(robot, now)
+
+
+SAY_WHY_CHANCE = {'off': 0.0, 'rarely': 0.25, 'sometimes': 0.5, 'often': 0.8}
+
+
+def _say_why_this_outfit(robot, now):
+    """He picked it himself: now and then he tells you why ("it's winter!")."""
+    from .initiative import in_quiet_hours
+    choice = robot.wardrobe.choice
+    if choice is not None and choice.why == 'new':          # he just made it: show it off
+        robot.face.add_hearts(now, (0.3, 0.6, 0.9))
+        robot.conversation.announce(choice.announce or
+                                    f'Ta-da! I designed this myself. I call it the '
+                                    f'{robot.wardrobe.current.title}!', 'happy')
+        return
+    if choice is None or not choice.because or robot.conversation.active:
+        return
+    s = robot.settings
+    if in_quiet_hours(s.quiet_hours, robot.initiative.now_dt().hour) or \
+            robot.evil.is_inhibited() or robot.rng.random() >= SAY_WHY_CHANCE.get(s.chattiness, 0):
+        return
+    robot.initiative.last_spoke = now
+    robot.speak_up('dressed_up', {'outfit': robot.wardrobe.current.title.lower(),
+                                  'because': choice.because})
 
 
 def on_undressed(robot, now):
@@ -265,9 +319,22 @@ def on_undressed(robot, now):
 def on_costume_clicked(robot, now):
     """Clicking him while dressed up snaps him out of it."""
     robot.face.show(F.SURPRISED, now, 0.5)
+    _took_off(robot, now)
     robot.bubbles.discard(characters.demand_icons(), now)
     robot.wardrobe.undress(now)
     robot.body.stop(now)
+
+
+def _took_off(robot, now):
+    """You ended his costume: if that was right away, he takes the hint."""
+    wardrobe = robot.wardrobe
+    if wardrobe.current is not None and not wardrobe.changing(now):
+        robot.taste.took_off(wardrobe.current.id, now - wardrobe.dressed_at, clicked=True)
+
+
+def _outfit_feedback(robot, amount):
+    if robot.wardrobe.current is not None:
+        robot.taste.nudge(robot.wardrobe.current.id, amount)
 
 
 def on_settings_applied(robot, now):
@@ -283,6 +350,7 @@ def on_conversation_started(robot, now):
     robot.mind.chatted()
     robot.memory.chatted()
     robot.initiative.talked(now)
+    _outfit_feedback(robot, outfits.CHATTED)
     robot.face.clear(F.HOBBY)
     if body.wake(now):
         robot.face.show(F.SURPRISED, now, 0.5)
@@ -298,8 +366,10 @@ def on_reply(robot, reply, now):
     action = reply.action
     if reply.feeling == 'praised':
         robot.mind.complimented()
+        _outfit_feedback(robot, outfits.PRAISED)
     elif reply.feeling == 'hurt':
         robot.mind.insulted()
+        _outfit_feedback(robot, outfits.HURT)
     if reply.user_name:
         robot.memory.remember_name(reply.user_name)
     for fact in reply.remember:
@@ -325,9 +395,10 @@ def on_reply(robot, reply, now):
             face.show(F.ARMS_UP, now, 3.0)   # happy dance with his arms in the air
             body.hop(now)
             face.add_hearts(now, (0.5, 1.5))
-    elif action == 'dress_up' and reply.action_arg:
-        robot.dress_up(reply.action_arg)        # ignored while he's hacking
+    elif action == 'dress_up':
+        robot.dress_up(reply.action_arg or None)   # no name: his own pick (not while hacking)
     elif action == 'undress' and not robot.busy_working:
+        _took_off(robot, now)
         robot.bubbles.discard(characters.demand_icons(), now)
         wardrobe.undress(now)
     elif action == 'travel' and not robot.busy_working:
@@ -339,6 +410,8 @@ def on_reply(robot, reply, now):
         robot.start_task('agent', json.loads(reply.action_arg))   # asks you first
     elif action == 'abort_task':
         robot.abort_task(everything=reply.action_arg == 'all')
+    elif action == 'design_outfit':
+        robot.design_outfit(reply.action_arg or '')
 
 
 def on_conversation_ended(robot, last_reply, now):
@@ -373,6 +446,8 @@ def on_task_event(robot, event, task, now):
         if task.kind == 'agent':                 # tell you what he did
             robot.memory.remember_task(task.title, task.result)
             robot.conversation.announce(task.result or 'All done!', 'happy')
+        elif task.kind == 'design':              # he'll show it off once he's changed
+            robot.designed(task)
     elif event == 'failed':
         robot.bubbles.push('warning', now, duration=5.0, dedup=False)
         face.show(F.SWEAT, now, 2.5)
@@ -380,6 +455,9 @@ def on_task_event(robot, event, task, now):
         if task.kind == 'agent':
             robot.conversation.announce(f"Sorry, I couldn't finish that task. {task.error}.",
                                         'sad')
+        elif task.kind == 'design':
+            robot.conversation.announce("Hmm, my new outfit didn't come out right. "
+                                        "I'll try again another time!", 'sad')
     elif event == 'aborted':
         face.show(F.SURPRISED, now, 0.5)
 

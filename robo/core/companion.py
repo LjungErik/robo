@@ -16,7 +16,7 @@ from robo.platform.base import MenuItem, PointerEvent, WindowHost
 from robo.render.scene import draw_frame
 from robo.tasks import TaskEnvironment, TaskManager, TaskRefused, make_task
 
-from . import layout, personality
+from . import layout, outfits, personality
 from .body import Body
 from .bubble import BubbleQueue
 from . import characters
@@ -54,6 +54,11 @@ class Companion:
         self.bubbles = BubbleQueue()
         self.wardrobe = Wardrobe(settings.effective_dress_up_every, now, self.rng,
                                  allowed=settings.characters)
+        self.taste = outfits.Taste(None)        # the app gives it a file
+        self.recent_events = {}                 # event kind -> when it last happened
+        self.on_new_outfit = None               # app: (id) -> None, he designed a new outfit
+        self._wear_next = None                  # outfits.Choice to put on once he's free
+        self.wall_clock = time.time
         self.effects = Effects(self.rng)
         self.travel = Traveller(self.rng)
         self.look = settings.look             # his everyday look (base design or character)
@@ -132,6 +137,7 @@ class Companion:
     def handle_event(self, event: Event):
         """An EventSource reported something."""
         log.info('[%s] %s: %s', event.source, event.kind, event.detail)
+        self.recent_events[event.kind] = self.clock()
         result = self.bubbles.push(event.kind, self.clock(), duration=self.settings.bubble_seconds)
         if result == 'bumped':
             personality.on_same_bubble_again(self, self.clock())
@@ -212,8 +218,15 @@ class Companion:
         self.host.redraw()
 
     def _update_costume(self, now, dt):
-        if personality.should_dress_up(self, now):
-            self.wardrobe.dress_up(now)
+        if self._wear_next is not None and not self.busy_working and self.body.on_ground \
+                and not self.wardrobe.changing(now):
+            choice, self._wear_next = self._wear_next, None
+            self.wardrobe.dress_up(now, choice.id, choice=choice)
+        elif personality.should_dress_up(self, now):
+            choice = self.pick_outfit(now)
+            if choice is not None:
+                log.info('picked an outfit: %s', choice)
+                self.wardrobe.dress_up(now, choice.id, choice=choice)
         change = self.wardrobe.update(now)
         if change == 'dressed':
             log.info('dressed up as %s', self.wardrobe.current.id)
@@ -278,7 +291,7 @@ class Companion:
             else:
                 talk.announce(reply.text, reply.mood)
         brain = talk.brain
-        if hasattr(brain, 'compose'):
+        if hasattr(brain, 'compose') and self.within_budget():
             brain.compose(kind, info or {}, talk.context(), deliver, fallback)
         elif fallback is not None:
             deliver(fallback)
@@ -300,8 +313,70 @@ class Companion:
                 talk.announce(text, 'happy' if mood == 'giggle' else 'sad')
 
     def dress_up(self, character_id=None):
-        if not self.busy_working:              # no costumes over the hacker outfit
-            self.wardrobe.dress_up(self.clock(), character_id, exclude=(self.look,))
+        """Dress up as `character_id` (you asked for it), or as what he picks himself."""
+        if self.busy_working:                  # no costumes over the hacker outfit
+            return
+        now = self.clock()
+        if character_id is None:
+            choice = self.pick_outfit(now)
+            if choice is not None:
+                self.wardrobe.dress_up(now, choice.id, choice=choice)
+            return
+        if self.wardrobe.dress_up(now, character_id, exclude=(self.look,)):
+            self.taste.nudge(character_id, outfits.ASKED_FOR)
+
+    def outfit_candidates(self):
+        """The outfits he may wear (ticked in Settings; all of them if none are)."""
+        known = characters.costume_ids()
+        ids = [c for c in self.wardrobe.allowed if c in known] or list(known)
+        return [characters.get(c) for c in ids if characters.get(c) is not None]
+
+    def pick_outfit(self, now):
+        """What he wants to wear right now (robo.core.outfits), as a Choice or None."""
+        current = self.wardrobe.current.id if self.wardrobe.current else None
+        return outfits.choose(self.outfit_candidates(), outfits.situations(self, now),
+                              self.taste, self.rng, exclude=(self.look, current),
+                              avoid=(self.wardrobe.last_id,))
+
+    # ------------------------------------------------------------ designing outfits
+    def can_design(self):
+        return bool(self.task_env.designs_dir) and self.agent_can_do_tasks()
+
+    def design_outfit(self, idea='', own=False):
+        """Design himself a new outfit with the AI agent (a task: he works at his laptop).
+        `own`: his own initiative (counts toward 'at most every ...')."""
+        taken = [f'{c.title} ({c.id})' for c in
+                 (characters.get(cid) for cid in characters.REGISTRY.ids('base', 'costume', 'work'))
+                 if c is not None]
+        self.taste.last_design = self.wall_clock()
+        self.taste.save()
+        return self.start_task('design', {'idea': idea or '', 'taken': taken})
+
+    def design_due(self):
+        """May he design one on his own now? (setting on, not too soon after the last)"""
+        s = self.settings
+        return (s.design_outfits and self.wall_clock() - self.taste.last_design >= s.design_every
+                and self.within_budget() and self.can_design())
+
+    def within_budget(self):
+        """May he use the AI brain for his own ideas (Settings: daily budget)?"""
+        from robo.agents.usage import LEDGER
+        budget = self.settings.budget_tokens
+        return budget is None or LEDGER.tokens_today() < budget
+
+    def designed(self, task):
+        """A design task finished: the new outfit is installed. Put it on, proudly."""
+        characters.REGISTRY.reload()
+        for cid in task.designed:
+            if self.on_new_outfit:
+                self.on_new_outfit(cid)
+            elif cid not in self.wardrobe.allowed:
+                self.wardrobe.allowed = self.wardrobe.allowed + (cid,)
+            self.taste.nudge(cid, outfits.PROUD)
+        self.characters_reloaded()
+        if task.designed:
+            self._wear_next = outfits.Choice(task.designed[0], why='new',
+                                             announce=task.result or '')
 
     def characters_reloaded(self):
         """Someone edited a character file: use the new version right away."""

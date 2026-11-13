@@ -26,14 +26,15 @@ log = logging.getLogger(__name__)
 # RuleBrain topics answered locally even with an agent (fast, offline, reliable):
 # always for tasks and goodbye, and for the rest when it's just the short command
 # ("dress up as a pirate"), not a longer request ("...and tell me a pirate fact").
-ALWAYS_LOCAL = frozenset({'abort_task', 'task_status', 'goodbye', 'forget', 'what_remember'})
+ALWAYS_LOCAL = frozenset({'abort_task', 'task_status', 'goodbye', 'forget', 'what_remember',
+                          'design_outfit', 'usage'})     # asking about tokens costs none
 SHORT_LOCAL = frozenset({'undress', 'dress_up', 'travel', 'dance', 'sleep', 'time', 'date',
                          'battery', 'remember_name', 'what_my_name'})
 SHORT_WORDS = 6
 MOODS = ('happy', 'normal', 'surprised', 'sad', 'sing', 'focus', 'cat', 'roar', 'laugh',
          'yawn')
 AGENT_ACTIONS = ('wave', 'cheer', 'hearts', 'laugh', 'dance', 'dress_up', 'undress', 'nap',
-                 'travel', 'agent_task')
+                 'travel', 'agent_task', 'design_outfit')
 MAX_SPOKEN = 600                  # characters; he answers out loud, so keep it short
 FORGET_AFTER = 30 * 60            # seconds between conversations before he starts fresh
 
@@ -66,7 +67,11 @@ Optional "feeling": "praised" if the user was kind to you, "hurt" if they were m
 action (optional) makes your body do something while you speak:
   wave, cheer, hearts, laugh, dance, nap (after the chat), undress (back to plain Robo),
   dress_up (arg = one of the characters listed in your status),
-  travel (fly / hang / teleport around the screen, only if your status says you can).
+  travel (fly / hang / teleport around the screen, only if your status says you can),
+  design_outfit (arg = the user's idea, or "" for your own: you design a brand-new outfit
+  for yourself, which takes a few minutes; only if your status says you can do tasks).
+If the user lets you choose what to wear, dress_up as what your status says you would \
+pick (or another one you like better) and say why.
 Only dress_up, undress, travel or nap when the user asks you to; the others you may use whenever they fit (wave hello, laugh at a joke, hearts for a compliment).
 
 Real tasks: if your status says you can do tasks and the user asks you to DO \
@@ -109,6 +114,11 @@ def _status_line(ctx):
         bits.append(f'you can travel by: {", ".join(ctx.travel)}')
     if ctx.characters:
         bits.append('characters you can dress up as: ' + ', '.join(ctx.characters))
+    if ctx.favourite_outfits:
+        bits.append('your favourite outfits: ' + ', '.join(ctx.favourite_outfits))
+    if ctx.outfit_choice:
+        bits.append(f'if you got to pick an outfit right now you would wear: {ctx.outfit_choice}'
+                    + (f' (because {ctx.outfit_because})' if ctx.outfit_because else ''))
     return '[Robo status: ' + '; '.join(bits) + ']'
 
 
@@ -160,6 +170,11 @@ def parse_reply(raw, ctx):
         action, arg = None, None
     if action == 'dress_up' and (arg not in characters.costume_ids() or ctx.task):
         action, arg = None, None
+    if action == 'design_outfit':
+        if not ctx.agent_tasks or ctx.task:
+            action, arg = None, None
+        else:
+            arg = ' '.join(str(arg or '').split())[:200]
     if action == 'travel' and not ctx.travel:
         action, arg = None, None
     if action == 'agent_task':
@@ -334,7 +349,8 @@ class AgentBrain(Brain):
 
         def work():
             try:
-                self._results.put((job, backend.ask(prompt, SYSTEM_PROMPT).text, None))
+                self._results.put((job, backend.ask(prompt, SYSTEM_PROMPT, 'speak_up').text,
+                                   None))
             except Exception as e:            # noqa: BLE001
                 log.info('speaking up failed: %s', e)
                 self._results.put((job, None, None))

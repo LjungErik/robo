@@ -6,6 +6,7 @@ id: thanos
 name: Thanos
 order: 220
 words: [thanos, titan, mad titan, infinity, gauntlet]
+wear: [halloween, night, video]
 
 move: {gesture: snap, mood: focus, seconds: 3.0, particles: dust}
 walk: {speed: 0.75}

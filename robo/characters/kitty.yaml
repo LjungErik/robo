@@ -3,6 +3,7 @@ id: kitty
 name: Kitty
 order: 120
 words: [kitty, cat, kitten]
+wear: [sad, tired, evening, valentine]
 
 move: {gesture: paw, mood: cat, seconds: 3.5, particles: hearts}
 

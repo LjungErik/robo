@@ -276,8 +276,9 @@ class Platform(ABC):
         return False
 
     def open_settings(self, settings: Settings, on_apply: Callable[[Settings], None],
-                      memory=None) -> None:
-        """`memory` (robo.core.memory.Memory) lets the window show and erase it."""
+                      memory=None, designs=None) -> None:
+        """`memory` (robo.core.memory.Memory) lets the window show and erase it;
+        `designs` is the folder of outfits he designed himself (listed, can be removed)."""
         raise NotImplementedError
 
     def data_dir(self) -> str:

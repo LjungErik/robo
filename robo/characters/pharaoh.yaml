@@ -3,6 +3,7 @@ id: pharaoh
 name: Pharaoh
 order: 10
 words: [pharaoh, egypt, egyptian, king]
+wear: [summer, weekend, afternoon]
 
 move: {gesture: egypt, mood: happy, seconds: 4.0}
 walk: {speed: 0.8}

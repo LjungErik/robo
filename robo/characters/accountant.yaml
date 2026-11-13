@@ -3,6 +3,7 @@ id: accountant
 name: Accountant
 order: 40
 words: [accountant, accounting]
+wear: [monday, mail, working, morning]
 
 move: {gesture: calc, mood: focus, seconds: 3.5, particles: numbers}
 walk: {speed: 1.2}

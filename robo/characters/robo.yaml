@@ -137,6 +137,10 @@ personality:
     picked_up_happy: ["Wheee!", "Higher! Higher!", "I can see my house from here!"]
     picked_up_grumpy: ["Hey! Put me down!", "Not now, I'm sleepy...", "Careful, I'm fragile!"]
     put_down: ["Phew, solid ground.", "Again! No, wait, not again."]
+    # he picked an outfit himself: {outfit} is its name, {because} why ("it's winter")
+    dressed_up: ["Ta-da! I'm the {outfit} today, because {because}!",
+                 "Because {because}, I just had to be the {outfit}. Beep!",
+                 "Felt like a {outfit} kind of moment. {because}!"]
 
 
 parts:

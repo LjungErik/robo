@@ -40,6 +40,7 @@ class AgentError(Exception):
     def __init__(self, message, spoken=None):
         super().__init__(message)
         self.spoken = spoken or "Hmm, I couldn't reach my AI brain just now."
+        self.usage = None                    # tokens it used anyway, if known
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class AgentStatus:
 class AgentAnswer:
     text: str
     session: Optional[str] = None   # provider session id, to continue the conversation
+    usage: Optional[object] = None  # robo.agents.usage.Usage, if the CLI reports it
 
 
 class AgentBackend:
@@ -68,6 +70,8 @@ class AgentBackend:
     # its own. A CLI that can't switch its own file / shell tools off must say False.
     supports_tasks = False
     tasks_unsupported = 'can only chat for now'
+    # (value for --model, label) offered in Settings; '' = the CLI's own default
+    MODELS = (('', 'Its own default'),)
 
     def __init__(self, workdir, model='', timeout=DEFAULT_TIMEOUT):
         self.workdir = workdir
@@ -104,7 +108,9 @@ class AgentBackend:
         return None
 
     # ------------------------------------------------------------ public
-    def ask(self, prompt, system):
+    def ask(self, prompt, system, kind='chat'):
+        """`kind` is what the tokens count toward (robo.agents.usage): 'chat', 'speak_up'."""
+        from .usage import LEDGER
         exe = self.executable()
         if not exe:
             raise AgentError(f'{self.program} is not installed',
@@ -114,7 +120,12 @@ class AgentBackend:
         argv = self.command(self._with_history(prompt), system)
         argv[0] = exe
         stdout, stderr, code = self._run(argv)
-        answer = self.parse(stdout, stderr, code)
+        try:
+            answer = self.parse(stdout, stderr, code)
+        except AgentError as e:
+            LEDGER.record(kind, e.usage)          # a failed answer can still cost tokens
+            raise
+        LEDGER.record(kind, answer.usage)
         if answer.session:
             self.session = answer.session
         if not self.remembers:

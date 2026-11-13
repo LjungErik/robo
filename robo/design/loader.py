@@ -16,7 +16,7 @@ from robo.render.interpreter import (Ctx, DrawingError, compile_colour, compile_
                                      compile_palette)
 
 from .expr import ExprError, compile_expr
-from .model import LINE_KINDS, ROLES, TRAVEL_KINDS, Character, Move, Travel
+from .model import LINE_KINDS, ROLES, TRAVEL_KINDS, WEAR_SITUATIONS, Character, Move, Travel
 
 try:
     import yaml
@@ -35,7 +35,7 @@ GESTURE_PLACES = ('behind', 'front', 'over_head')
 RIG_KEYS = ('shoulder', 'arm_length', 'neck', 'sit_drop', 'head_top', 'antenna_y')
 TOP_KEYS = {'id', 'name', 'role', 'base', 'order', 'words', 'demand', 'move', 'walk', 'travel',
             'rig', 'palette', 'recolor', 'parts', 'layers', 'antenna_y', 'gestures',
-            'particles', 'about', 'author', 'personality', 'hobbies'}
+            'particles', 'about', 'author', 'personality', 'hobbies', 'wear'}
 PERSONALITY_LISTS = ('traits', 'likes', 'dislikes', 'quirks')
 GLYPHS = ('note', 'spark', 'star', 'magic', 'heart', 'text')
 
@@ -197,12 +197,19 @@ def parse(data, name, default_id):
     words = data.get('words') or ()
     _need(isinstance(words, (list, tuple)), f'{name}: words: expected a list of phrases')
 
+    wear = data.get('wear') or ()
+    _need(isinstance(wear, (list, tuple)), f'{name}: wear: expected a list of situations')
+    for w in wear:
+        _need(w in WEAR_SITUATIONS, f'{name}: wear: unknown situation {w!r} (situations are '
+                                    f'{", ".join(WEAR_SITUATIONS)})')
+
     personality = _personality(data.get('personality'), name)
 
     cf.character = Character(
         id=cid, name=str(data.get('name', '')), role=role, base=str(data.get('base', 'robo')),
         order=float(data.get('order', 1000)),
         words=tuple(str(w).lower() for w in words),
+        wear=tuple(wear),
         demand=icon_id,
         move=_move(data['move'], 'move') if data.get('move') else None,
         walk_speed=float(walk.get('speed', 1.0)), walk_lift=walk_lift,

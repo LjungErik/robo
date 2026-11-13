@@ -15,7 +15,8 @@ from robo.design import REGISTRY
 
 from .brain import Brain, Context, Reply
 
-DRESS_WORDS = ('dress up', 'dress', 'costume', 'become', 'turn into', 'outfit')
+DRESS_WORDS = ('dress up', 'dress', 'costume', 'become', 'turn into', 'outfit', 'wear',
+               'put something on')
 TRAVEL_WORDS = {
     'fly': ('fly', 'fly around', 'take off', 'flying'),
     'hang': ('swing', 'web', 'climb', 'hang'),
@@ -54,6 +55,21 @@ JOKES = (
 )
 
 
+DESIGN_PATTERN = re.compile(r'\b(design|make|create|invent|sew|draw)\b(.{0,40}?)'
+                            r'\b(outfits?|costumes?|clothes)\b(.{0,80})')
+_IDEA_FILLER = re.compile(r'\b(yourself|your own|your|a|an|new|brand new|some|own|me|for|'
+                          r'please|like|as|of|that looks like|that is|with|called)\b')
+
+
+def design_idea(match):
+    """'design yourself a disco knight outfit' -> 'disco knight' ('' = his own idea)."""
+    for part in (match.group(4), match.group(2)):
+        idea = ' '.join(_IDEA_FILLER.sub(' ', part).split()).strip(' .,!?')
+        if idea:
+            return idea
+    return ''
+
+
 def _words(*options):
     """Regex matching any of the words/phrases as whole words."""
     return re.compile(r'\b(' + '|'.join(re.escape(o) for o in options) + r')\b')
@@ -72,6 +88,10 @@ class RuleBrain(Brain):
                                    'how is your task', 'how is it going with the task',
                                    'are you done', 'are you finished', 'progress'),
              self.task_status),
+            ('usage', _words('tokens', 'token', 'usage', 'how much have you used',
+                             'how much did you use', 'how much is left', 'limit', 'quota',
+                             'how much claude'), self.usage),
+            ('design_outfit', DESIGN_PATTERN, self.design_outfit),
             ('do_task', _words('do a task', 'do task', 'new task', 'another task', 'a task',
                                'start a task', 'task'), self.do_task),
             ('goodbye', _words('bye', 'goodbye', 'good bye', 'see you', 'stop talking',
@@ -323,6 +343,20 @@ class RuleBrain(Brain):
     def joke(self, text, ctx):
         return Reply(self._pick(*JOKES) + ' Ha ha, beep!', 'happy', action='hearts')
 
+    def usage(self, text, ctx):
+        return Reply(ctx.usage_text or "I don't keep track of that here. Beep?", 'focus')
+
+    def design_outfit(self, text, ctx):
+        if not ctx.agent_tasks:
+            return Reply("I'd love to design my own outfit! I need my Claude brain for that "
+                         'though: Settings, AI brain.', 'sad')
+        if ctx.task:
+            return Reply("I'm busy with a task right now. Ask me again when I'm done!", 'focus')
+        idea = design_idea(DESIGN_PATTERN.search(text))
+        text = (f'A {idea} outfit? Ooh, yes! Give me a few minutes at my drawing board.' if idea
+                else "My own design? I've got an idea already! Give me a few minutes.")
+        return Reply(text, 'happy', action='design_outfit', action_arg=idea)
+
     def dress_up(self, text, ctx):
         if ctx.task:
             return Reply("I can't change clothes now, I'm in the middle of a task! "
@@ -331,12 +365,21 @@ class RuleBrain(Brain):
         found = [(len(w), cid) for cid, words in character_words().items() for w in words
                  if _words(w).search(text)]
         wanted = max(found)[1] if found else None
-        if wanted is None:
-            known = characters.costume_ids()
-            pool = [c for c in ctx.characters if c in known and c != ctx.look] or list(known)
-            if not pool:
-                return Reply("Hmm, I don't have any costumes right now!", 'sad')
-            wanted = self.rng.choice(pool)
+        if wanted is None:                       # "dress up!": he picks
+            wanted = ctx.outfit_choice
+            if wanted is None:
+                known = characters.costume_ids()
+                pool = [c for c in ctx.characters if c in known and c != ctx.look] or list(known)
+                if not pool:
+                    return Reply("Hmm, I don't have any costumes right now!", 'sad')
+                wanted = self.rng.choice(pool)
+            elif ctx.costume != wanted:
+                who = characters.title(wanted).lower()
+                because = ctx.outfit_because or 'I just feel like it'
+                return Reply(self._pick(f'Ooh, let me pick! {because[:1].upper()}{because[1:]}, '
+                                        f'so... the {who}!',
+                                        f'I know! The {who}, because {because}!'),
+                             'happy', action='dress_up', action_arg=wanted)
         who = characters.title(wanted).lower()
         if ctx.costume == wanted:
             return Reply(f'I am already the {who}! Look at me!', 'happy', action='dance')

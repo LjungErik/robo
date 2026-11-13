@@ -10,7 +10,8 @@ ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'la
            'abort_task',   # action_arg: 'all' to abandon every task, else just the current one
            'travel',       # action_arg: 'fly', 'hang' or 'teleport' ('' = whatever he can)
            'agent_task',   # action_arg: JSON {"goal": ..., "read": [paths], "write": [paths]}
-           'forget')       # action_arg: 'all', or a word: forget the facts that mention it
+           'forget',       # action_arg: 'all', or a word: forget the facts that mention it
+           'design_outfit')  # action_arg: the idea ('' = his own), done by the AI agent
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,10 @@ class Context:
     remembers: bool = True                        # memory switched on
     personality: str = ''                         # who he is right now, for the AI brain
     task_note: str = ''                           # what the task is doing right now
+    outfit_choice: Optional[str] = None           # what he'd pick to wear himself right now
+    outfit_because: str = ''                      # ...and why ("it's winter"; '' = a whim)
+    favourite_outfits: Tuple[str, ...] = ()       # the outfits he likes best
+    usage_text: str = ''                          # how many AI tokens he used (spoken)
 
 
 class Brain(ABC):

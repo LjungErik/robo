@@ -3,6 +3,7 @@ id: superhero
 name: Superhero
 order: 110
 words: [superhero, super hero, hero]
+wear: [chat, happy, back, meeting]
 
 move: {gesture: fly, mood: happy, seconds: 3.5, particles: stars,
        lift: "26 + sin(t * 3) * 3", tilt: 0.22}

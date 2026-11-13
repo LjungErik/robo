@@ -3,6 +3,7 @@ id: mechanic
 name: Mechanic
 order: 50
 words: [mechanic]
+wear: [fixing, working, monday]
 
 move: {gesture: fix, mood: wince, seconds: 2.5, particles: sparks}
 antenna_y: -121

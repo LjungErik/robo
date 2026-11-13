@@ -3,6 +3,7 @@ id: wizard
 name: Wizard
 order: 90
 words: [wizard, magician, witch]
+wear: [halloween, christmas, evening, video]
 
 move: {gesture: spell, mood: focus, seconds: 3.0, particles: magic}
 walk: {speed: 0.8}

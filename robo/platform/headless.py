@@ -184,6 +184,7 @@ class FakeSandbox(SandboxBackend):
     """Pretends to run jobs, on the manual clock. Runs no code at all, so it's
     safe; the real sandboxes are tested in tests/test_sandbox.py."""
     name = 'fake'
+    supports_mounts = False        # it can't mount anything: read-only inputs are copied in
 
     def __init__(self, clock):
         self.clock = clock
@@ -334,7 +335,7 @@ class HeadlessPlatform(Platform):
     def has_settings_window(self):
         return True
 
-    def open_settings(self, settings, on_apply, memory=None):
+    def open_settings(self, settings, on_apply, memory=None, designs=None):
         self.settings_opened.append((settings, on_apply))
 
     def data_dir(self):

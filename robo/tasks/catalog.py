@@ -14,6 +14,7 @@ To add a task:
   3. teach the brain a phrase that replies action='start_task', action_arg='<kind>'.
 """
 from .agent_task import AgentTask, TaskRefused, resolve_paths
+from .design_task import DesignTask
 from .base import Task
 from .sandboxed import SandboxedTask, TaskEnvironment  # noqa: F401
 
@@ -55,10 +56,24 @@ def _agent(rng, env, args):
                      write=resolve_paths(args.get('write')), agent=agent)
 
 
+def _design(rng, env, args):
+    """He designs himself an outfit: args = {'idea': ..., 'taken': [names]}."""
+    agent = env.agent_factory() if env.agent_factory else None
+    if agent is None:
+        raise TaskRefused('I need an AI brain for that (Settings, AI brain)')
+    if not agent.supports_tasks:
+        raise TaskRefused(f'{agent.name} {agent.tasks_unsupported}')
+    if not env.designs_dir:
+        raise TaskRefused('there is nowhere to keep my designs')
+    return DesignTask(env, agent, env.designs_dir, idea=args.get('idea', ''),
+                      taken=args.get('taken') or ())
+
+
 # kind -> factory(rng, env: TaskEnvironment, args: dict) -> Task
 TASK_KINDS = {
     'placeholder': _placeholder,
     'agent': _agent,              # done by the AI agent with Robo's sandboxed tools
+    'design': _design,            # he designs a new outfit for himself (AI agent)
 }
 DEFAULT_KIND = 'placeholder'
 

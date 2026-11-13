@@ -3,6 +3,7 @@ id: roman
 name: Roman emperor
 order: 60
 words: [roman, emperor, caesar]
+wear: [spring, meeting, morning]
 
 move: {gesture: lyre, mood: sing, seconds: 4.5, particles: notes}
 walk: {speed: 0.7}

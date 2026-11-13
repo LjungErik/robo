@@ -36,6 +36,7 @@ class TaskEnvironment:
     approver: object = field(default_factory=DenyAll)
     workspace_root: str = field(default_factory=default_workspace_root)
     agent_factory: Optional[Callable] = None     # () -> robo.agents.AgentBackend, or None
+    designs_dir: Optional[str] = None            # where the outfits he designs go
 
     def unavailable_reason(self):
         """None if tasks can run safely, else why not."""

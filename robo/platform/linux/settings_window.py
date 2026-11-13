@@ -100,6 +100,10 @@ CSS = b"""
 .robo-secondary { background-color: #FFFFFF; }
 .robo-secondary:hover { background-color: #F4F7FB; }
 .robo-status { font-weight: 700; }
+.robo-usage {
+    background-color: #F4F7FB; border: 2px solid #C9D1E3; border-radius: 12px;
+    padding: 8px 10px; font-size: 9pt;
+}
 .robo-tabs {
     background-color: #EEF1F8; border-bottom: 2px solid #3B4060; padding: 8px 12px;
 }
@@ -179,6 +183,10 @@ class SettingsWindow:
         self._hover = None
         self.memory = None
         self._memory_box = None
+        self.designs_dir = None
+        self._designs_box = None
+        self._model_combos = {}
+        self._agent_for_models = ''
         self._picking = False
         self._chip_art = []
         self._apply_time = -10.0
@@ -187,12 +195,17 @@ class SettingsWindow:
         self.effects = Effects(random.Random())
 
     # ------------------------------------------------------------ public
-    def open(self, settings, on_apply, memory=None):
+    def open(self, settings, on_apply, memory=None, designs=None):
         self.on_apply = on_apply
         self.memory = memory
+        self.designs_dir = designs
         if self.win is None:
             self._build()
         self._show_memory()
+        self._show_designs()
+        self._show_usage()
+        if getattr(self, '_usage_timer', None) is None:      # keep it current while open
+            self._usage_timer = GLib.timeout_add_seconds(5, self._show_usage)
         self.applied = settings
         self._load(settings)
         self.snapshot = self._read()
@@ -294,7 +307,7 @@ class SettingsWindow:
         top.pack_start(_style(Gtk.Label(label=f.label, xalign=0), 'robo-row-label'), True, True, 0)
         row.pack_start(top, False, False, 0)
 
-        if f.kind in ('bool', 'memory'):
+        if f.kind in ('bool', 'memory', 'designs'):
             sw = Gtk.Switch(valign=Gtk.Align.CENTER)
             sw.connect('notify::active', self._changed)
             top.pack_end(sw, False, False, 0)
@@ -302,6 +315,9 @@ class SettingsWindow:
             if f.kind == 'memory':                # ...and what he remembers, to erase
                 self._memory_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
                 row.pack_end(self._memory_box, False, False, 0)
+            elif f.kind == 'designs':             # ...and what he made, to remove
+                self._designs_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+                row.pack_end(self._designs_box, False, False, 0)
         elif f.kind in ('float', 'seconds'):
             control = self._slider(f, row, top)
         elif f.kind == 'characters':
@@ -310,6 +326,8 @@ class SettingsWindow:
             control = self._look_chips(row)
         elif f.kind == 'choice':
             control = self._choice(f, row, top)
+        elif f.kind == 'model':
+            control = self._model_choice(f, row, top)
         else:
             raise ValueError(f'unknown setting kind {f.kind!r}')
 
@@ -370,10 +388,16 @@ class SettingsWindow:
         status.set_selectable(True)            # so you can copy the install / login command
         if f.key == 'agent':                   # only the AI brain has a status to show
             row.pack_start(status, False, False, 0)
+        if f.key == 'daily_budget':            # ...and how much he has used
+            self._usage_label = _style(Gtk.Label(xalign=0), 'robo-usage')
+            self._usage_label.set_line_wrap(True)
+            self._usage_label.set_selectable(True)
+            row.pack_end(self._usage_label, False, False, 0)
 
         def changed(*_):
             if f.key == 'agent':
                 self._show_agent_status(combo.get_active_id(), status)
+                self._offer_models(combo.get_active_id())
             self._changed()
         combo.connect('changed', changed)
 
@@ -384,6 +408,49 @@ class SettingsWindow:
             combo.set_active_id(value if any(v == value for v, _l in f.choices)
                                 else f.choices[0][0])
         return _Control(row, get, set_)
+
+    def _model_choice(self, f, row, top):
+        """Which model the AI brain uses: the list depends on the brain picked above."""
+        combo = Gtk.ComboBoxText(valign=Gtk.Align.CENTER)
+        top.pack_end(combo, False, False, 0)
+        self._model_combos[f.key] = combo
+        combo.connect('changed', self._changed)
+
+        def get():
+            active = combo.get_active_id()
+            return '' if active in (None, 'default') else active
+
+        def set_(value):
+            self._fill_models(combo, self._agent_for_models, value or '')
+        return _Control(row, get, set_)
+
+    def _fill_models(self, combo, agent_id, value, keep_unknown=True):
+        from robo.agents import BACKENDS
+        cls = BACKENDS.get(agent_id)
+        models = list(cls.MODELS) if cls else [('', 'Its own default')]
+        if value and all(v != value for v, _l in models):
+            if keep_unknown:                              # e.g. a full model name in the file
+                models.append((value, f'{value} (set by hand)'))
+            else:
+                value = ''
+        was = self._loading
+        self._loading = True
+        try:
+            combo.remove_all()
+            for v, label in models:
+                combo.append(v or 'default', label)
+            combo.set_active_id(value or 'default')
+        finally:
+            self._loading = was
+        combo.set_sensitive(len(models) > 1)
+
+    def _offer_models(self, agent_id):
+        """Another AI brain was picked: offer its models (keeping a choice it also has)."""
+        self._agent_for_models = agent_id
+        for combo in self._model_combos.values():
+            current = combo.get_active_id()
+            self._fill_models(combo, agent_id, '' if current in (None, 'default') else current,
+                              keep_unknown=False)
 
     def _show_agent_status(self, agent_id, label):
         """Is that agent's CLI installed and logged in? (checked in the background)"""
@@ -440,6 +507,48 @@ class SettingsWindow:
             forget.connect('clicked', lambda *_: (mem.forget('all'), self._show_memory()))
             box.pack_start(forget, False, False, 0)
         box.show_all()
+
+    def _show_usage(self):
+        from robo.agents.usage import LEDGER
+        label = getattr(self, '_usage_label', None)
+        if label is not None:
+            label.set_text('Tokens used (counted from what Claude reports after every answer):\n'
+                           + '\n'.join('• ' + l for l in LEDGER.lines())
+                           + '\nHow much of your plan is left: Claude Code doesn\'t say, so he '
+                           "can't tell. He'll say when he hits the limit.")
+        return True
+
+    def _show_designs(self):
+        """The outfits he designed himself, each with a button to throw it away."""
+        from robo.tasks.design_task import designs
+        box = self._designs_box
+        if box is None:
+            return
+        for child in box.get_children():
+            box.remove(child)
+        made = designs(self.designs_dir) if self.designs_dir else []
+        if not made:
+            box.pack_start(_style(Gtk.Label(label="He hasn't designed anything yet.",
+                                            xalign=0), 'robo-help'), False, False, 0)
+        for cid, path in made:
+            line = Gtk.Box(spacing=6)
+            line.pack_start(Gtk.Label(label='• ' + characters.title(cid), xalign=0),
+                            True, True, 0)
+            x = Gtk.Button(label='✕')
+            x.set_relief(Gtk.ReliefStyle.NONE)
+            x.set_tooltip_text('Throw this outfit away (it goes to the trash)')
+            x.connect('clicked', lambda *_a, p=path: self._discard_design(p))
+            line.pack_end(x, False, False, 0)
+            box.pack_start(line, False, False, 0)
+        box.show_all()
+
+    def _discard_design(self, path):
+        from gi.repository import Gio
+        try:
+            Gio.File.new_for_path(path).trash(None)
+        except GLib.Error as e:
+            self._set_status(f'Could not remove it: {e.message}')
+        self._show_designs()
 
     def _chip_flow(self):
         flow = Gtk.FlowBox()
@@ -600,6 +709,9 @@ class SettingsWindow:
 
     def _on_close(self, *_):
         self.win.hide()
+        if getattr(self, '_usage_timer', None) is not None:
+            GLib.source_remove(self._usage_timer)
+            self._usage_timer = None
         if self._timer is not None:
             GLib.source_remove(self._timer)
             self._timer = None

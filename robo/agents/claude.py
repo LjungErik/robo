@@ -5,6 +5,9 @@ Robo uses that login. API-key environment variables are not passed on, so it
 is always your subscription that answers.
 """
 from .base import AgentAnswer, AgentBackend, AgentError, AgentStatus, load_json
+from .usage import LEDGER, from_claude
+
+LIMIT_WORDS = ('usage limit', 'rate limit', 'limit reached', 'limit will reset', 'resets ')
 
 
 class ClaudeCode(AgentBackend):
@@ -15,6 +18,10 @@ class ClaudeCode(AgentBackend):
     login_hint = 'Open a terminal, run "claude" and log in with your Claude account.'
     remembers = True
     supports_tasks = True
+    MODELS = (('', "Claude Code's default"),
+              ('haiku', 'Haiku: quickest, uses the least'),
+              ('sonnet', 'Sonnet: smart and light'),
+              ('opus', 'Opus: smartest, uses the most'))
 
     def status(self):
         if not self.executable():
@@ -70,7 +77,9 @@ class ClaudeCode(AgentBackend):
         if kind == 'result':
             ok = not data.get('is_error') and data.get('subtype') == 'success'
             text = str(data.get('result') or data.get('subtype') or '')
-            return {'kind': 'result', 'ok': ok, 'text': text}
+            if not ok and any(w in text.lower() for w in LIMIT_WORDS):
+                LEDGER.hit_limit(text)
+            return {'kind': 'result', 'ok': ok, 'text': text, 'usage': from_claude(data)}
         if kind == 'system' and data.get('subtype') == 'init':
             bad = [s.get('name') for s in data.get('mcp_servers') or ()
                    if s.get('status') != 'connected']
@@ -88,15 +97,20 @@ class ClaudeCode(AgentBackend):
                                  'I need you to log in to Claude first. Check my settings!')
             raise AgentError(f'claude exited with {returncode}: {detail[0]}')
         text = str(data.get('result') or '')
+        usage = from_claude(data)
         if data.get('is_error') or data.get('subtype', 'success') != 'success':
             low = text.lower()
             if self.session and ('session' in low or 'conversation' in low):
                 self.session = None             # an old session vanished: start over
             if 'login' in low or 'auth' in low:
-                raise AgentError(f'claude: {text}',
-                                 'I need you to log in to Claude first. Check my settings!')
-            if 'limit' in low:
-                raise AgentError(f'claude: {text}',
-                                 "I've used up my Claude messages for now. Let's talk later!")
-            raise AgentError(f'claude: {text or data.get("subtype")}')
-        return AgentAnswer(text, data.get('session_id'))
+                error = AgentError(f'claude: {text}',
+                                   'I need you to log in to Claude first. Check my settings!')
+            elif 'limit' in low:
+                LEDGER.hit_limit(text)
+                error = AgentError(f'claude: {text}',
+                                   "I've used up my Claude messages for now. Let's talk later!")
+            else:
+                error = AgentError(f'claude: {text or data.get("subtype")}')
+            error.usage = usage
+            raise error
+        return AgentAnswer(text, data.get('session_id'), usage)

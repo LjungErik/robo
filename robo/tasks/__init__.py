@@ -12,5 +12,6 @@ him, and dresses him as a hacker (robo.core.hacker) while it is busy.
 from .base import Task  # noqa: F401
 from .catalog import TASK_KINDS, TimerTask, make_task  # noqa: F401
 from .agent_task import AgentTask, TaskRefused  # noqa: F401
+from .design_task import DesignTask  # noqa: F401
 from .sandboxed import SandboxedTask, TaskEnvironment  # noqa: F401
 from .manager import TaskManager  # noqa: F401

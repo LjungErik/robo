@@ -125,6 +125,7 @@ class AgentTask(Task):
         self._events = queue.Queue()
         self._fraction = None
         self._events_seen = 0
+        self.trusted = ()                # Robo's own folders it may read (see DesignTask)
 
     # ------------------------------------------------------------ what you're asked
     def approval_lines(self):
@@ -149,7 +150,7 @@ class AgentTask(Task):
             problem = f'{self.agent.program} is not installed'
         if problem is None:
             for p in self.permissions.read + self.permissions.write:
-                if _forbidden(p):
+                if _forbidden(p) and p not in self.trusted:
                     problem = f'not allowed: {p}'
         if problem:
             self.fail(now, problem)
@@ -293,6 +294,8 @@ class AgentTask(Task):
             elif kind == 'text':
                 log.info('task %s says: %s', self.id, ev['text'][:200])
             elif kind == 'result':
+                from robo.agents.usage import LEDGER
+                LEDGER.record('design' if self.kind == 'design' else 'task', ev.get('usage'))
                 if ev['ok']:
                     self.result = ev['text'].strip()[:600] or 'All done!'
                     return True

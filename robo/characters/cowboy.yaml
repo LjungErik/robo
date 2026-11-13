@@ -3,6 +3,7 @@ id: cowboy
 name: Cowboy
 order: 20
 words: [cowboy, cow boy, sheriff]
+wear: [music, friday, weekend]
 
 move: {gesture: lasso, mood: happy, seconds: 3.5}
 walk: {speed: 1.5, gallop: true}
