@@ -315,6 +315,13 @@ class FakeApprover(Approver):
         self.asked.append(('changes', title, lines))
         on_answer(self.answer)
 
+    def show_results(self, title, summary, files, folder):
+        self.asked.append(('results', title, files, folder))
+
+    def open_path(self, path):
+        self.asked.append(('open', path))
+        return True
+
 
 class HeadlessPlatform(Platform):
     name = 'headless'

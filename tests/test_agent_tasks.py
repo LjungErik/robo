@@ -78,6 +78,13 @@ class Yes(Approver):
         self.asked.append(('review', lines))
         on_answer(True)
 
+    def show_results(self, title, summary, files, folder):
+        self.asked.append(('results', (summary, files, folder)))
+
+    def open_path(self, path):
+        self.asked.append(('open', path))
+        return True
+
 
 class Tmp:
     """A temporary folder inside the home folder (so it may be granted)."""
@@ -110,6 +117,50 @@ def call_server(root, *calls):
     return out
 
 
+def make_pdf(path, pages, compress=False):
+    """A small but real PDF (Helvetica text, one line per item), standard library only."""
+    import zlib
+    objs = ['<< /Type /Catalog /Pages 2 0 R >>', None,
+            '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
+    kids = []
+    for lines in pages:
+        ops = 'BT /F1 14 Tf 72 720 Td ' + ' '.join(
+            '(%s) Tj 0 -20 Td' % l.replace('(', '\\(').replace(')', '\\)') for l in lines) + ' ET'
+        data = ops.encode('latin-1')
+        if compress:
+            data = zlib.compress(data)
+        objs.append((('<< /Length %d /Filter /FlateDecode >>' if compress else
+                      '<< /Length %d >>') % len(data), data))
+        objs.append('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] '
+                    '/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>' % len(objs))
+        kids.append(len(objs))
+    objs[1] = '<< /Type /Pages /Kids [%s] /Count %d >>' % (
+        ' '.join('%d 0 R' % k for k in kids), len(kids))
+    out, offsets = bytearray(b'%PDF-1.4\n'), []
+    for n, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b'%d 0 obj\n' % n
+        if isinstance(o, tuple):
+            out += o[0].encode() + b'\nstream\n' + o[1] + b'\nendstream'
+        else:
+            out += o.encode()
+        out += b'\nendobj\n'
+    xref = len(out)
+    out += b'xref\n0 %d\n0000000000 65535 f \n' % (len(objs) + 1)
+    out += b''.join(b'%010d 00000 n \n' % o for o in offsets)
+    out += b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (len(objs) + 1, xref)
+    with open(path, 'wb') as f:
+        f.write(bytes(out))
+
+
+def load_server():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('robo_mcp_server_test', SERVER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 class ToolServerTest(unittest.TestCase):
     def test_tools_work_inside_their_folder(self):
         with tempfile.TemporaryDirectory() as root:
@@ -129,6 +180,48 @@ class ToolServerTest(unittest.TestCase):
                 events = f.read()
             self.assertIn('halfway', events)
 
+    def test_reads_pdfs(self):
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, 'input'))
+            pdf = os.path.join(root, 'input', 'report.pdf')
+            make_pdf(pdf, [['Quarterly report', 'Sales went up (a lot)'], ['Page two here']],
+                     compress=True)
+            res = call_server(root, ('read_pdf', {'path': 'input/report.pdf'}),
+                              ('read_pdf', {'path': 'input/report.pdf', 'first_page': 2}),
+                              ('read_file', {'path': 'input/report.pdf'}),
+                              ('read_pdf', {'path': 'input/report.pdf', 'first_page': 9}))
+            self.assertEqual([e for e, _ in res], [False, False, False, True])
+            self.assertIn('Sales went up (a lot)', res[0][1])
+            self.assertIn('Page two here', res[0][1])
+            self.assertIn('2 pages', res[0][1])
+            self.assertNotIn('Quarterly', res[1][1])
+            self.assertIn('Page two here', res[1][1])
+            self.assertIn('Quarterly report', res[2][1])          # read_file reads PDFs too
+            self.assertIn('only 2 pages', res[3][1])
+
+    def test_reads_pdfs_without_any_pdf_programs(self):
+        server = load_server()
+        with tempfile.TemporaryDirectory() as root:
+            for compress in (False, True):
+                pdf = os.path.join(root, f'doc{compress}.pdf')
+                make_pdf(pdf, [['Hello (world)', 'second line'], ['Next page']], compress)
+                pages = server._pdf_text_builtin(pdf, 1, None)
+                self.assertEqual(len(pages), 2)
+                self.assertEqual(pages[0].split('\n')[:2], ['Hello (world)', 'second line'])
+                self.assertEqual(server._pdf_text_builtin(pdf, 2, 2), ['Next page'])
+
+    @unittest.skipUnless(shutil.which('pdftoppm'), 'poppler-utils is not installed')
+    def test_looks_at_pdf_pages(self):
+        with tempfile.TemporaryDirectory() as root:
+            make_pdf(os.path.join(root, 'a.pdf'), [['Look at me']])
+            p = subprocess.Popen([sys.executable, '-I', SERVER, '--root', root],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+            msg = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                   'params': {'name': 'look_at_pdf_page', 'arguments': {'path': 'a.pdf'}}}
+            out, _ = p.communicate(json.dumps(msg) + '\n', timeout=60)
+            content = json.loads(out)['result']['content'][0]
+            self.assertEqual((content['type'], content['mimeType']), ('image', 'image/png'))
+
     def test_no_escaping_the_folder(self):
         with tempfile.TemporaryDirectory() as root:
             res = call_server(root, ('read_file', {'path': '../../etc/passwd'}),
@@ -144,7 +237,8 @@ class ToolServerTest(unittest.TestCase):
                            input=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
                            + '\n', capture_output=True, text=True, timeout=10)
         tools = {t['name'] for t in json.loads(p.stdout)['result']['tools']}
-        self.assertTrue({'read_file', 'write_file', 'run_command', 'list_files'} <= tools)
+        self.assertTrue({'read_file', 'write_file', 'run_command', 'list_files',
+                         'read_pdf', 'look_at_pdf_page'} <= tools)
 
 
 class AgentTaskTest(unittest.TestCase):
@@ -205,6 +299,12 @@ class AgentTaskTest(unittest.TestCase):
             made = [os.path.join(d, f) for d, _, fs in os.walk(self.results) for f in fs]
             self.assertEqual([open(m).read() for m in made], ['sorted 2'])
             self.assertEqual(said, ['All done, boop!'])               # he tells you
+            self.assertTrue(any(l.startswith('Summary: All done') for l in lines))
+            kind, (summary, files, folder) = self.approver.asked[2]  # then shows what he made
+            self.assertEqual(kind, 'results')
+            self.assertEqual(summary, 'All done, boop!')
+            self.assertEqual(sorted(files), sorted(made + [notes]))
+            self.assertEqual(os.path.dirname(made[0]), folder)        # his results folder
 
     def test_reading_only_changes_nothing_of_yours(self):
         with Tmp() as home_dir:
@@ -268,6 +368,30 @@ class AgentTaskTest(unittest.TestCase):
         labels = [i.label or '' for i in self.p.window.menus[-1]]
         self.assertTrue(any('Give me a task' in l for l in labels))
 
+    def test_menu_opens_the_results_folder(self):
+        from robo.platform.base import PointerEvent
+        os.rmdir(self.results)                                  # nothing made yet: no entry
+        self.robot.pointer_press(PointerEvent(3, 85, 200, 0, 0))
+        labels = [i.label or '' for i in self.p.window.menus[-1]]
+        self.assertFalse(any('task results' in l for l in labels))
+        os.makedirs(self.results)
+        self.robot.pointer_press(PointerEvent(3, 85, 200, 0, 0))
+        item = next(i for i in self.p.window.menus[-1] if 'task results' in (i.label or ''))
+        item.action()
+        self.assertEqual(self.approver.asked[-1], ('open', self.results))
+
+    def test_review_lines_are_grouped_for_the_popup(self):
+        from robo.sandbox.approval import group_lines
+        sections, notes = group_lines(['Do: sort: my notes', 'Read: /a/b.pdf', 'Read: /c',
+                                       'added: /r/x.md', '... and 3 more', '',
+                                       'Nothing has been changed yet.'])
+        self.assertEqual([(s.heading, s.items) for s in sections],
+                         [("What I'll do", ['sort: my notes']),
+                          ("I'd like to look at", ['/a/b.pdf', '/c']),
+                          ('New files', ['/r/x.md', '... and 3 more'])])
+        self.assertTrue(sections[1].paths)
+        self.assertEqual(notes, ['Nothing has been changed yet.'])
+
 
 class VoiceTaskTest(unittest.TestCase):
     CTX = Context(agent_tasks=True)
@@ -323,6 +447,30 @@ class SandboxedToolsTest(unittest.TestCase):
         self.assertEqual(codes[:3], ['exit code 2', 'exit code 1', 'exit code 1'])   # all refused
         self.assertEqual(codes[3], 'exit code 0')
         self.assertTrue(os.path.exists(os.path.join(work, 'mine.txt')))
+        shutil.rmtree(work, ignore_errors=True)
+
+    @unittest.skipUnless(shutil.which('pdftotext'), 'poppler-utils is not installed')
+    def test_pdfs_can_be_read_in_the_sandbox(self):
+        from robo.platform.linux.sandbox import BubblewrapBackend
+        backend = BubblewrapBackend()
+        if backend.check():
+            self.skipTest(backend.check())
+        work = tempfile.mkdtemp()
+        os.makedirs(os.path.join(work, '.robo'))
+        make_pdf(os.path.join(work, 'doc.pdf'), [['Inside the box']], compress=True)
+        argv, env = backend.stdio_command(LaunchSpec(work_dir=work, entry='mcp_server.py'))
+        msgs = [{'jsonrpc': '2.0', 'id': 0, 'method': 'initialize', 'params': {}},
+                {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                 'params': {'name': 'read_pdf', 'arguments': {'path': 'doc.pdf'}}},
+                {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call',
+                 'params': {'name': 'look_at_pdf_page', 'arguments': {'path': 'doc.pdf'}}}]
+        out = subprocess.run(argv, env=env, input='\n'.join(json.dumps(m) for m in msgs) + '\n',
+                             capture_output=True, text=True, timeout=60).stdout.splitlines()
+        text = json.loads(out[1])['result']['content'][0]['text']
+        self.assertIn('Inside the box', text)
+        self.assertNotIn('rough extraction', text)              # pdftotext did it
+        if shutil.which('pdftoppm'):
+            self.assertEqual(json.loads(out[2])['result']['content'][0]['type'], 'image')
         shutil.rmtree(work, ignore_errors=True)
 
 

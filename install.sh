@@ -21,6 +21,7 @@ python3 -c 'import gi; gi.require_version("Gtk","3.0"); from gi.repository impor
 python3 -c 'import gi; gi.require_foreign("cairo")' 2>/dev/null || missing+=(python3-gi-cairo)
 python3 -c 'import yaml' 2>/dev/null || missing+=(python3-yaml)      # character files
 command -v bwrap >/dev/null || missing+=(bubblewrap)        # the sandbox tasks run in
+command -v pdftotext >/dev/null || missing+=(poppler-utils) # so tasks can read PDFs
 if [ $WITH_VOICE = 1 ]; then
   python3 -c 'import ctypes.util, sys; sys.exit(not ctypes.util.find_library("espeak-ng"))' \
     || missing+=(libespeak-ng1)

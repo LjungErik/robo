@@ -16,9 +16,12 @@ Standard library only, like the rest of the worker.
 import base64
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
+import zlib
 
 ROOT = os.path.realpath(os.getcwd())          # the task's work folder (/work in the sandbox)
 if '--root' in sys.argv:                      # (tests run it without a sandbox)
@@ -30,6 +33,7 @@ MAX_OUTPUT = 20_000                           # characters of command output
 COMMAND_TIMEOUT = 120
 MAX_IMAGE_BYTES = 4_000_000
 IMAGE_TYPES = {b'\x89PNG': 'image/png', b'\xff\xd8\xff': 'image/jpeg'}
+PDF_PAGES_DIR = 'pdf-pages'                   # scratch folder for rendered PDF pages
 SERVER = {'name': 'robo', 'version': '1.0'}
 
 INSTRUCTIONS = """\
@@ -38,7 +42,9 @@ These are your only tools: you work in a sandboxed folder.
   files/    COPIES of what the user let you CHANGE; edit them in place. The user
             reviews every change before it is applied to the real files.
   files/results/  put NEW things you make for the user here (reports, notes...)
-Everything else in the folder is scratch space. There is no internet access."""
+Everything else in the folder is scratch space. There is no internet access.
+PDF files: read them with read_pdf (text), or look_at_pdf_page (a picture of a page,
+for scanned PDFs, charts and tables)."""
 
 
 def _tool(name, description, props, required=()):
@@ -51,7 +57,8 @@ TOOLS = [
     _tool('list_files', 'List the files and folders under a path (default: everything).',
           {'path': {'type': 'string', 'description': 'Folder, relative to the work folder'},
            'depth': {'type': 'integer', 'description': 'How deep to go (default 3)'}}),
-    _tool('read_file', 'Read a text file. Long files: use offset/limit (in characters).',
+    _tool('read_file', 'Read a text file (PDFs are read as text too). Long files: use '
+          'offset/limit (in characters).',
           {'path': {'type': 'string'}, 'offset': {'type': 'integer'},
            'limit': {'type': 'integer'}}, ['path']),
     _tool('write_file', 'Create or overwrite a text file (only under files/ or scratch space).',
@@ -69,6 +76,17 @@ TOOLS = [
           {'command': {'type': 'string'},
            'timeout': {'type': 'integer', 'description': f'seconds, max {COMMAND_TIMEOUT}'}},
           ['command']),
+    _tool('read_pdf', 'Read the text of a PDF file, page by page. Long PDFs: ask for a few '
+          'pages at a time with first_page / last_page. Tells you how many pages there are.',
+          {'path': {'type': 'string'},
+           'first_page': {'type': 'integer', 'description': 'default 1'},
+           'last_page': {'type': 'integer', 'description': 'default: the last page'},
+           'offset': {'type': 'integer', 'description': 'characters to skip (long pages)'}},
+          ['path']),
+    _tool('look_at_pdf_page', 'Look at one page of a PDF as a picture: for scanned PDFs '
+          '(no text), charts, tables and layouts.',
+          {'path': {'type': 'string'}, 'page': {'type': 'integer', 'description': 'default 1'}},
+          ['path']),
     _tool('look_at_image', 'Look at a PNG or JPEG picture in the work folder (for example a '
           'preview you drew).', {'path': {'type': 'string'}}, ['path']),
     _tool('report_progress', 'Tell the user (through Robo) what you are doing now.',
@@ -145,6 +163,8 @@ def read_file(path, offset=0, limit=MAX_READ):
         raise ToolError(f'{path} is a folder; use list_files')
     with open(p, 'rb') as f:
         raw = f.read(MAX_READ * 4 + int(offset or 0) * 4)
+    if raw.startswith(b'%PDF'):
+        return read_pdf(path, offset=offset)
     if b'\0' in raw[:4096]:
         return f'{path} looks like a binary file ({os.path.getsize(p)} bytes); ' \
                'use run_command to inspect it'
@@ -230,6 +250,250 @@ def look_at_image(path):
     return Image(data, mime)
 
 
+# ---------------------------------------------------------------- PDF
+def _tool_path(name):
+    """A command-line program, if it is installed (poppler-utils: pdftotext ...)."""
+    return shutil.which(name, path='/usr/bin:/bin:/usr/local/bin')
+
+
+def _pdf_path(path):
+    p = _path(path, must_exist=True)
+    if os.path.isdir(p):
+        raise ToolError(f'{path} is a folder; use list_files')
+    with open(p, 'rb') as f:
+        if b'%PDF' not in f.read(1024):
+            raise ToolError(f'{path} is not a PDF file')
+    return p
+
+
+def _pdf_page_count(p):
+    tool = _tool_path('pdfinfo')
+    if tool:
+        try:
+            r = subprocess.run([tool, p], capture_output=True, timeout=30,
+                               stdin=subprocess.DEVNULL)
+            m = re.search(rb'^Pages:\s+(\d+)', r.stdout, re.M)
+            if m:
+                return int(m.group(1))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        from pypdf import PdfReader               # if the system has it
+        return len(PdfReader(p).pages)
+    except Exception:
+        pass
+    with open(p, 'rb') as f:
+        data = f.read()
+    return len(re.findall(rb'/Type\s*/Page(?![a-zA-Z])', data)) or None
+
+
+def _pdf_text_pdftotext(p, first, last):
+    tool = _tool_path('pdftotext')
+    if not tool:
+        return None
+    cmd = [tool, '-layout', '-enc', 'UTF-8', '-f', str(first)]
+    if last:
+        cmd += ['-l', str(last)]
+    try:
+        r = subprocess.run(cmd + [p, '-'], capture_output=True, timeout=COMMAND_TIMEOUT,
+                           stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        return None
+    pages = r.stdout.decode('utf-8', 'replace').split('\f')
+    if pages and not pages[-1].strip():
+        pages.pop()
+    return pages
+
+
+def _pdf_text_pypdf(p, first, last):
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        return None
+    try:
+        reader = PdfReader(p)
+        end = min(last or len(reader.pages), len(reader.pages))
+        return [(reader.pages[i].extract_text() or '') for i in range(first - 1, end)]
+    except Exception:
+        return None
+
+
+_PDF_ESCAPES = {b'n': b'\n', b'r': b'\r', b't': b'\t', b'b': b'\b', b'f': b'\f',
+                b'(': b'(', b')': b')', b'\\': b'\\'}
+
+
+def _pdf_literal(data, i):
+    """Read a (literal string) starting just after its '('. -> (bytes, next index)."""
+    out, depth = bytearray(), 1
+    while i < len(data):
+        c = data[i:i + 1]
+        if c == b'\\':
+            nxt = data[i + 1:i + 2]
+            if nxt in _PDF_ESCAPES:
+                out += _PDF_ESCAPES[nxt]
+                i += 2
+            elif nxt.isdigit():
+                m = re.match(rb'[0-7]{1,3}', data[i + 1:i + 4])
+                out.append(int(m.group(0), 8) & 0xFF)
+                i += 1 + len(m.group(0))
+            else:
+                i += 2
+            continue
+        if c == b'(':
+            depth += 1
+        elif c == b')':
+            depth -= 1
+            if depth == 0:
+                return bytes(out), i + 1
+        out += c
+        i += 1
+    return bytes(out), i
+
+
+def _pdf_decode(raw):
+    if raw.startswith(b'\xfe\xff'):
+        return raw[2:].decode('utf-16-be', 'replace')
+    return raw.decode('latin-1')
+
+
+_PDF_SHOW = {b'Tj', b'TJ', b"'", b'"'}
+_PDF_NEWLINE = {b'T*', b'Td', b'TD', b'Tm', b'ET', b"'", b'"'}
+_PDF_TOKEN = re.compile(rb"\s+|%[^\r\n]*|\(|<<|>>|<[0-9A-Fa-f\s]*>|\[|\]|/[^\s()<>\[\]{}/%]*"
+                        rb"|[-+.0-9]+|[A-Za-z*'\"]+|.", re.S)
+
+
+def _pdf_hex(token):
+    hexs = re.sub(rb'\s', b'', token[1:-1])
+    try:
+        raw = bytes.fromhex((hexs + b'0' * (len(hexs) % 2)).decode('ascii'))
+    except ValueError:
+        return ''
+    text = _pdf_decode(raw)
+    # 2-byte font codes (CID fonts) can't be read without the font: skip the gibberish
+    return text if all(ch.isprintable() or ch.isspace() for ch in text) else ''
+
+
+def _pdf_content_text(content):
+    """Text shown by Tj / TJ / ' / " in one content stream (good enough for simple PDFs)."""
+    out, pending, i = [], [], 0
+    while i < len(content):
+        if content[i:i + 1] == b'(':
+            s, i = _pdf_literal(content, i + 1)
+            pending.append(_pdf_decode(s))
+            continue
+        m = _PDF_TOKEN.match(content, i)
+        tok, i = m.group(0), m.end()
+        if tok[:1] == b'<' and tok[:2] != b'<<':
+            pending.append(_pdf_hex(tok))
+        elif tok[:1].isalpha() or tok in (b"'", b'"', b'T*'):
+            if tok in _PDF_NEWLINE and out and not out[-1].endswith('\n'):
+                out.append('\n')
+            if tok in _PDF_SHOW:
+                out.append(''.join(pending))
+            pending = []                    # any other operator: its operands are used up
+    return ''.join(out)
+
+
+def _pdf_text_builtin(p, first, last):
+    """Last resort without any PDF programs: pull the text out of the page streams.
+    Works for simple PDFs; compressed object streams and odd fonts may come out empty."""
+    with open(p, 'rb') as f:
+        data = f.read()
+    texts = []
+    for m in re.finditer(rb'<<(.*?)>>\s*stream\r?\n', data, re.S):
+        head, start = m.group(1), m.end()
+        end = data.find(b'endstream', start)
+        if end < 0:
+            continue
+        if re.search(rb'/(Type\s*/(XObject|XRef|ObjStm|Metadata)|Subtype\s*/Image|Length1)',
+                     head):
+            continue
+        stream = data[start:end]
+        if b'FlateDecode' in head:
+            try:
+                stream = zlib.decompressobj().decompress(stream)
+            except zlib.error:
+                continue
+        elif b'/Filter' in head:
+            continue
+        if b'BT' not in stream:
+            continue
+        text = _pdf_content_text(stream).strip()
+        if text:
+            texts.append(text)
+    # the page each stream belongs to isn't tracked: treat each content stream as a page
+    return texts[first - 1:last or None]
+
+
+def read_pdf(path, first_page=1, last_page=None, offset=0):
+    p = _pdf_path(path)
+    first = max(1, int(first_page or 1))
+    last = int(last_page) if last_page else None
+    if last is not None and last < first:
+        raise ToolError('last_page is before first_page')
+    total = _pdf_page_count(p)
+    if total and first > total:
+        raise ToolError(f'{path} has only {total} pages')
+    note = ''
+    for extract in (_pdf_text_pdftotext, _pdf_text_pypdf, _pdf_text_builtin):
+        pages = extract(p, first, last)
+        if pages is not None and (extract is not _pdf_text_builtin or pages):
+            if extract is _pdf_text_builtin:
+                note = ('(No PDF reader is installed, so this is a rough extraction: the '
+                        'text order or page breaks may be off.)\n')
+            break
+    else:
+        pages = []
+    parts = [f'--- page {first + i} ---\n{t.rstrip()}' for i, t in enumerate(pages)]
+    text = '\n\n'.join(parts)
+    if not text.strip() or not any(t.strip() for t in pages):
+        if _tool_path('pdftoppm'):
+            return (f'{path}: no text found on these pages (it may be scanned pictures). '
+                    'Use look_at_pdf_page to look at the pages instead.')
+        return (f'{path}: no text found on these pages. It may be scanned pictures, or use '
+                'a kind of compression the built-in reader can\'t open (installing '
+                'poppler-utils on this computer would help).')
+    offset = max(0, int(offset or 0))
+    chunk = text[offset:offset + MAX_READ]
+    shown_last = first + len(pages) - 1
+    header = f'{path}: {total or "?"} pages, showing {first}-{shown_last}\n{note}'
+    if offset + MAX_READ < len(text):
+        chunk += f'\n... [more: read again with offset={offset + MAX_READ}]'
+    elif total and shown_last < total:
+        chunk += f'\n... [pages {shown_last + 1}-{total} left: read_pdf with ' \
+                 f'first_page={shown_last + 1}]'
+    return header + chunk
+
+
+def look_at_pdf_page(path, page=1):
+    p = _pdf_path(path)
+    page = max(1, int(page or 1))
+    tool = _tool_path('pdftoppm')
+    if not tool:
+        raise ToolError('no PDF page renderer is installed here (poppler-utils); use '
+                        'read_pdf for the text instead')
+    out_dir = os.path.join(ROOT, PDF_PAGES_DIR)
+    os.makedirs(out_dir, exist_ok=True)
+    stem = os.path.join(out_dir, f'page-{page}')
+    for dpi in (110, 72, 50):
+        try:
+            r = subprocess.run([tool, '-png', '-r', str(dpi), '-f', str(page), '-l', str(page),
+                                '-singlefile', p, stem], capture_output=True,
+                               timeout=COMMAND_TIMEOUT, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            raise ToolError('could not draw that page')
+        png = stem + '.png'
+        if r.returncode != 0 or not os.path.isfile(png):
+            raise ToolError(f'could not draw page {page}: '
+                            + r.stderr.decode('utf-8', 'replace').strip()[:300])
+        if os.path.getsize(png) <= MAX_IMAGE_BYTES:
+            with open(png, 'rb') as f:
+                return Image(f.read(), 'image/png')
+    raise ToolError(f'page {page} is too big to look at')
+
+
 def report_progress(note, fraction=None):
     _event(tool='report_progress', note=str(note)[:300],
            fraction=None if fraction is None else max(0.0, min(1.0, float(fraction))))
@@ -239,6 +503,7 @@ def report_progress(note, fraction=None):
 HANDLERS = {'list_files': list_files, 'read_file': read_file, 'write_file': write_file,
             'edit_file': edit_file, 'move': move, 'delete': delete, 'make_folder': make_folder,
             'run_command': run_command, 'look_at_image': look_at_image,
+            'read_pdf': read_pdf, 'look_at_pdf_page': look_at_pdf_page,
             'report_progress': report_progress}
 
 

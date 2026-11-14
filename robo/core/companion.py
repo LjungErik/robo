@@ -8,6 +8,7 @@ It never touches the OS directly: it is given a WindowHost (window, mouse,
 screen size) and receives Events and idle times from the platform.
 """
 import logging
+import os
 import random
 import time
 
@@ -510,11 +511,13 @@ class Companion:
         return result
 
     def review_changes(self, task):
-        """The task changed copies of your files: ask before applying them."""
+        """The task changed copies of your files: ask before applying them, then
+        show you what it made (with buttons to open it)."""
         changes = getattr(task, 'changes', None)
         if not changes:
             return
         cleanup = getattr(task, 'cleanup', lambda: None)
+        approver = self.task_env.approver
 
         def answered(ok):
             if not ok:
@@ -526,7 +529,33 @@ class Companion:
             for change, reason in skipped:
                 log.warning('  skipped %s: %s', change.original_path, reason)
             cleanup()
-        self.task_env.approver.review_changes(task.title, changes.describe(), answered)
+            files = [c.original_path for c in applied if c.kind != 'deleted']
+            if files:
+                approver.show_results(task.title, getattr(task, 'result', '') or '',
+                                      files, self._results_folder(task, files))
+        lines = changes.describe()
+        if getattr(task, 'result', None):
+            lines = [f'Summary: {" ".join(task.result.split())}'] + lines
+        approver.review_changes(task.title, lines, answered)
+
+    @staticmethod
+    def _results_folder(task, files):
+        """The folder to open for a finished task: his results folder if he put
+        something there, else the folder the (first) changed file is in."""
+        results = getattr(task, 'results_dir', None)
+        if results and os.path.isdir(results) and os.listdir(results):
+            return results
+        return os.path.dirname(files[0]) if files else ''
+
+    def results_folder(self):
+        """Where the new files from his tasks go (~/Robo), if he has made any."""
+        from robo.tasks.agent_task import RESULTS_ROOT
+        return RESULTS_ROOT if os.path.isdir(RESULTS_ROOT) else None
+
+    def open_results_folder(self):
+        folder = self.results_folder()
+        if folder and not self.task_env.approver.open_path(folder):
+            log.warning("can't open %s here", folder)
 
     def shutdown(self):
         """The app is closing: stop showing him the screen, stop every task."""
@@ -668,6 +697,8 @@ class Companion:
                 items.append(MenuItem('☀️  Wake up', lambda: self.body.wake(now())))
             else:
                 items.append(MenuItem('😴  Take a nap', lambda: personality.nap(self, now(), 60)))
+        if self.results_folder():
+            items.append(MenuItem('📂  Open my task results', self.open_results_folder))
         if self.wardrobe.current and not self.busy_working:
             items.append(MenuItem('👕  Back to normal',
                                   lambda: personality.on_costume_clicked(self, now())))

@@ -227,6 +227,9 @@ JSON answer into a `Reply`. To add a provider, subclass `AgentBackend` and add i
 
 With **Claude** as his AI brain (Settings → AI brain), Robo does real work for you:
 sorting, tidying, summarising, writing, renaming, converting, checking files.
+He can **read PDFs** too (text page by page, or a page as a picture for scanned PDFs,
+charts and tables); that uses `pdftotext` / `pdftoppm` from `poppler-utils`, which
+`install.sh` sets up. Without them he falls back to a simple built-in reader.
 
 - **Right-click → Give me a task…** opens a form: type what he should do and pick the
   files or folders he may **look at** and the ones he may **change**.
@@ -238,13 +241,17 @@ sorting, tidying, summarising, writing, renaming, converting, checking files.
 - When he's done he **tells you what he did**, and you **review every change** before
   anything of yours is touched. New files he makes (reports, lists, notes) go to a new
   folder in `~/Robo/`, also after your review.
+- Once they're saved, the same popup shows **your files with an Open button** for each,
+  plus **Open folder**. Later, **right-click → Open my task results** opens `~/Robo/`.
+- Every task popup (permission, review, results) shows Robo with a badge (a lock, a
+  magnifying glass, a tick) and lists things in labelled cards, so it's quick to read.
 
 **How it stays safe.** The agent's brain and its hands are kept apart:
 
 - **Brain:** Claude Code runs outside the sandbox (it needs the internet and your
   login), with **all of its own tools switched off**.
 - **Hands:** its only tools are Robo's (read, write, edit, move, list files, run a
-  command), served by `robo/sandbox/worker/mcp_server.py` **inside the sandbox** below.
+  command, read PDFs, look at pictures), served by `robo/sandbox/worker/mcp_server.py` **inside the sandbox** below.
   So whatever it decides, it works on copies, in a folder with no internet, nothing of
   yours but what you granted, and no way to your login or your keys.
 - Your home folder itself and hidden folders in it (`~/.ssh`, keyrings, browser
