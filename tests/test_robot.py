@@ -366,6 +366,20 @@ class BrainTest(unittest.TestCase):
         self.assertEqual(r.mood, 'surprised')
 
 
+class HushPhraseTest(unittest.TestCase):
+    def test_what_counts_as_stop(self):
+        from robo.core.talk import hush_in, is_hush
+        for text in ('Stop!', 'stop talking please', 'Hey Robo, be quiet', 'mute',
+                     'shut up robo', 'okay robo stop', "that's enough"):
+            self.assertTrue(is_hush(text), text)
+        for text in ('stop the task', 'stop looking', 'what is that', 'stop by the shop',
+                     'bye'):
+            self.assertFalse(is_hush(text), text)
+        self.assertEqual(hush_in('stop talking it'), 'stop talking')   # what the ears report
+        self.assertEqual(hush_in('robo be quiet please'), 'be quiet')
+        self.assertEqual(hush_in(''), '')
+
+
 class ConversationTest(unittest.TestCase):
     def setUp(self):
         self.robot, self.p = make_robot(dress_up_every=0, evil_after=0)
@@ -396,6 +410,67 @@ class ConversationTest(unittest.TestCase):
         self.p.scheduler.advance(5)
         self.assertFalse(self.robot.conversation.active)
         self.assertIsNone(self.p.ears.listening)
+
+    def start_chat(self):
+        self.robot.conversation.start()
+        self.assertEqual(self.robot.conversation.state, 'speaking')
+
+    def test_stop_talking_cuts_him_off_mid_sentence(self):
+        self.start_chat()
+        said = len(self.p.voice.said)
+        self.assertIsNotNone(self.p.ears.hushing)              # it listens for "stop"
+        self.p.ears.say_while_he_talks('stop talking')
+        self.assertFalse(self.robot.conversation.active)
+        self.assertEqual(len(self.p.voice.said), said)          # no goodbye
+        self.assertIsNone(self.p.ears.listening)                # and no more listening
+        self.assertIsNone(self.p.ears.hushing)
+        self.p.scheduler.advance(3)
+        self.assertFalse(self.robot.conversation.active)
+
+    def test_other_words_while_he_talks_dont_stop_him(self):
+        self.start_chat()
+        self.p.ears.say_while_he_talks('the weather is lovely')
+        self.assertEqual(self.robot.conversation.state, 'speaking')
+
+    def test_his_own_stop_through_the_speakers_doesnt_count(self):
+        from robo.conversation import Reply
+        conv = self.robot.conversation
+        self.start_chat()
+        conv._say(Reply("Okay, I'll stop now and be quiet.", 'happy'))
+        self.p.ears.say_while_he_talks('stop')
+        self.p.ears.say_while_he_talks('be quiet')
+        self.assertEqual(conv.state, 'speaking')
+        self.p.ears.say_while_he_talks('mute')                  # that one he didn't say
+        self.assertFalse(conv.active)
+
+    def test_saying_be_quiet_as_your_answer_ends_it_without_goodbye(self):
+        self.start_chat()
+        self.run_until_listening()
+        said = len(self.p.voice.said)
+        self.p.ears.hear('hey robo, be quiet please')
+        self.assertFalse(self.robot.conversation.active)
+        self.assertEqual(len(self.p.voice.said), said)
+
+    def test_a_hush_drops_what_he_was_saving_up_to_say(self):
+        conv = self.robot.conversation
+        self.start_chat()
+        conv.announce('Your task is done!')
+        self.p.ears.say_while_he_talks('mute')
+        self.p.scheduler.advance(5)
+        self.assertFalse(conv.active)
+        self.assertNotIn('Your task is done!', self.p.voice.said)
+
+    def test_he_goes_back_to_what_he_was_doing(self):
+        robot, p = make_robot(dress_up_every=0, evil_after=0, wake_word=True)
+        robot.start_task('placeholder', {'seconds': 30})
+        robot.conversation.start()
+        p.scheduler.advance(0.2)
+        self.assertIn('conversation', robot.tasks._pause_reasons)   # a chat pauses his work
+        p.ears.say_while_he_talks('shut up')
+        p.scheduler.advance(1)
+        self.assertFalse(robot.conversation.active)
+        self.assertNotIn('conversation', robot.tasks._pause_reasons)  # ...he gets back to it
+        self.assertTrue(p.ears.wake_word)                       # "Hey Robo" works again
 
     def test_mouth_moves_while_he_speaks(self):
         self.robot.talk()

@@ -48,6 +48,7 @@ class VoskEars(SpeechInput):
         self._listening = None        # (on_heard, on_silence, on_partial) while listening
         self._wake = False
         self._on_wake = None
+        self._on_overheard = None     # while he talks: what the mic hears (for "stop")
 
     # ------------------------------------------------------------ worker process
     def _ensure_worker(self):
@@ -125,6 +126,8 @@ class VoskEars(SpeechInput):
             on_heard, on_silence, _ = self._listening
             self._listening = None
             on_heard(text) if event == 'heard' else on_silence()
+        elif event == 'overheard' and self._on_overheard:
+            self._on_overheard(text)
         elif event == 'wake' and self._wake and self._on_wake and not self._listening:
             self._on_wake()
 
@@ -138,15 +141,25 @@ class VoskEars(SpeechInput):
         if not self.available or not self._ensure_worker():
             on_silence()
             return
+        self._on_overheard = None
         self._listening = (on_heard, on_silence, on_partial)
         self._send(f'listen {timeout:g}')
 
     def pause(self):
         self._listening = None
+        self._on_overheard = None
         self._send('idle')
+
+    def overhear(self, phrases, on_text):
+        """The mic stays open while he talks, spotting only `phrases` ("stop talking")."""
+        if not self.available or not self._ensure_worker():
+            return
+        self._on_overheard = on_text
+        self._send('overhear ' + json.dumps(list(phrases)))
 
     def set_wake_word(self, enabled, on_wake):
         self._wake, self._on_wake = enabled, on_wake
+        self._on_overheard = None
         if not self.available:
             return
         if enabled:
@@ -157,4 +170,5 @@ class VoskEars(SpeechInput):
 
     def shutdown(self):
         self._listening = None
+        self._on_overheard = None
         self._stop_worker()

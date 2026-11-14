@@ -153,14 +153,25 @@ class FakeEars(SpeechInput):
 
     def __init__(self):
         self.listening = None
+        self.hushing = None           # on_text while he talks (overhear)
         self.wake_word = False
         self.on_wake = None
 
     def listen(self, timeout, on_heard, on_silence, on_partial=None):
+        self.hushing = None
         self.listening = (on_heard, on_silence)
 
     def pause(self):
         self.listening = None
+        self.hushing = None
+
+    def overhear(self, phrases, on_text):
+        self.hushing = on_text
+
+    def say_while_he_talks(self, text):
+        """You (or his own voice, through the speakers) talk while he talks."""
+        if self.hushing:
+            self.hushing(text)
 
     def set_wake_word(self, enabled, on_wake):
         self.wake_word, self.on_wake = enabled, on_wake

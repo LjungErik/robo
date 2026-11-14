@@ -7,10 +7,13 @@ must not import anything from robo. Everything stays on this computer.
 Commands (one per line on stdin):
     listen SECONDS   recognise one sentence; give up after SECONDS of silence
     wake             wait for "hey robo"
+    overhear JSON    while Robo talks: spot these phrases (["stop talking", "mute"]) and
+                     report the words heard with high confidence (Robo decides)
     idle             stop listening (the microphone is closed)
     quit
 Events (JSON lines on stdout):
-    {"event": "ready" | "partial" | "heard" | "silence" | "wake" | "error", "text": "..."}
+    {"event": "ready" | "partial" | "heard" | "silence" | "wake" | "overheard" | "error",
+     "text": "..."}
 """
 import argparse
 import json
@@ -27,6 +30,8 @@ WAKE_WORDS = ('robo', 'robot')
 WAKE_GRAMMAR = ['hey robo', 'hi robo', 'hello robo', 'okay robo', 'robo',
                 'hey robot', 'hi robot', 'robot', '[unk]']
 KEEP_LISTENING_WHILE_TALKING = 4.0   # extend the timeout while words keep coming
+SURE = 0.9      # overhear: word confidence needed. Robo's own voice through the
+                # speakers scores ~0.6-0.75 on stop words; you saying them ~1.0
 
 
 def emit(event, text=''):
@@ -130,6 +135,19 @@ def main():
                 elif cmd == 'wake':
                     mode = 'wake'
                     rec = vosk.KaldiRecognizer(model, source.rate, json.dumps(WAKE_GRAMMAR))
+                elif cmd == 'overhear':
+                    # only the stop phrases (+ [unk] for everything else): it finds
+                    # them even when you talk over him; a confidence check (SURE)
+                    # keeps his own voice from counting
+                    try:
+                        phrases = [str(p) for p in json.loads(' '.join(rest))]
+                    except ValueError:
+                        phrases = []
+                    if phrases:
+                        mode = 'overhear'
+                        rec = vosk.KaldiRecognizer(model, source.rate,
+                                                   json.dumps(phrases + ['[unk]']))
+                        rec.SetWords(True)
                 elif cmd == 'idle':
                     mode, rec = 'idle', None
                 elif cmd == 'quit':
@@ -166,6 +184,12 @@ def main():
                 text = json.loads(rec.FinalResult()).get('text', '').strip()
                 emit('heard', text) if text else emit('silence')
                 mode, rec = 'idle', None
+        elif mode == 'overhear':
+            if rec.AcceptWaveform(data):     # (only final results have confidences)
+                words = [w['word'] for w in json.loads(rec.Result()).get('result', ())
+                         if w.get('word') != '[unk]' and w.get('conf', 0) >= SURE]
+                if words:
+                    emit('overheard', ' '.join(words))
         elif mode == 'wake':
             done = rec.AcceptWaveform(data)
             result = json.loads(rec.Result() if done else rec.PartialResult())

@@ -182,6 +182,14 @@ moves his mouth along, and keeps listening until you say goodbye or go quiet.
 asking him *"are you evil?"*.
 A single click while he's chatting hushes him.
 
+**Stop him by voice**, even mid-sentence: say *"stop"*, *"stop talking"*,
+*"mute"*, *"be quiet"*, *"shut up"* or *"that's enough"*. He goes silent
+at once (no goodbye), stops listening, drops anything he was saving up to tell
+you, and goes back to what he was doing (a paused task carries on). While he
+talks or thinks, the microphone listens only for those phrases. His own voice
+through the speakers doesn't count: the recogniser needs to be sure of the
+words, and he ignores stop words he's saying himself.
+
 Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
 *"dress up as a pirate"*, *"turn into iron man"*, *"fly around!"*, *"dance!"*,
 *"sing a song"*, *"you're so cute"*,
@@ -189,7 +197,8 @@ Things to try: *"tell me a joke"*, *"what time is it?"*, *"how's my battery?"*,
 
 - While he listens his bubble shows a 🎤, and while he thinks a ⚙️.
 - Turn on **Listen for "Hey Robo"** in Settings to start a chat by voice.
-  This keeps the microphone open. Otherwise the microphone is only on while he listens.
+  This keeps the microphone open. Otherwise the microphone is only on during a chat
+  (and while he announces something, for "stop").
 - Pitch, speed and volume are in **Settings → Voice & talking**. Switch on
   **Robotic voice** if you want the beepy voice all the time.
 - Speech recognition is **offline** ([Vosk](https://alphacephei.com/vosk/)): nothing you

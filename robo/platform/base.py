@@ -235,6 +235,12 @@ class SpeechInput(ABC):
     def pause(self) -> None:
         """Stop listening (e.g. while Robo talks, so he doesn't hear himself)."""
 
+    def overhear(self, phrases, on_text: Callable[[str], None]) -> None:
+        """While Robo talks: listen for `phrases` ("stop talking", "mute") and call
+        on_text(text) with what was heard (Robo decides; his own voice may come
+        through the speakers). pause(), listen() or set_wake_word() ends it.
+        Ears that can't (the default) don't."""
+
     def prepare(self) -> None:
         """A conversation is starting: get ready to listen (e.g. load the
         speech model) without opening the microphone yet."""

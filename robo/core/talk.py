@@ -5,11 +5,15 @@
       └──── end / bye ─────┴──── silence ────────┘          brain.ask()│
                            └──────────────── SPEAKING (reply) ◄────────┘
 
-The microphone is paused while he speaks, so he never answers himself.
+The microphone is paused while he speaks, so he never answers himself. It only
+listens for a quick "stop" then (HUSH_PHRASES): "stop talking", "mute", "be quiet"...
+cuts him off at once, ends the chat without a goodbye, and he goes back to
+whatever he was doing. Said as your answer, the same words do the same.
 Voice and ears are platform objects (robo.platform.base.SpeechOutput /
 SpeechInput); the brain is any robo.conversation.Brain.
 """
 import logging
+import re
 from datetime import datetime
 
 from robo.agents.usage import LEDGER
@@ -26,6 +30,43 @@ LISTEN_SECONDS = 7.0          # how long he waits for you to start talking
 THINK_BUBBLE_DELAY = 0.15     # only show "thinking" if the brain takes a moment
 MIC, THINKING_ICON = 'mic', 'thinking'      # see bubble.TALK_ICONS
 EVIL_MOODS = ('laugh', 'evil')   # these lines are said in the evil voice ("mwahaha")
+
+# Say one of these (alone) and he stops talking and listening right away.
+HUSH_PHRASES = ('stop', 'stop it', 'stop talking', 'stop speaking', 'stop now', 'please stop',
+                'mute', 'be quiet', 'quiet', 'shush', 'hush', 'shut up', 'silence',
+                'enough', "that's enough", 'that is enough', 'be silent', 'stop robo',
+                'stop robot', 'robo stop', 'robot stop', 'okay stop', 'ok stop')
+_FILLER = re.compile(r"^(?:(?:hey|hi|okay|ok|oh|please|robo|robot)\s+)+|(?:\s+(?:please|robo|robot|now))+$")
+
+
+def _plain(text):
+    return ' '.join(re.sub(r"[^a-z' ]+", ' ', str(text or '').lower()).split())
+
+
+def is_hush(text):
+    """Is this (the whole thing you said) a request to stop talking?"""
+    t = _plain(text)
+    if t in HUSH_PHRASES:
+        return True
+    return _FILLER.sub('', t).strip() in HUSH_PHRASES
+
+
+def hush_in(overheard):
+    """What the mic caught while he talked: the stop phrase in it, or ''.
+    (The ears only report stop words they're sure of, maybe several in a row.)"""
+    words = _plain(overheard).split()
+    for phrase in sorted(HUSH_PHRASES, key=len, reverse=True):
+        p = phrase.split()
+        if any(words[i:i + len(p)] == p for i in range(len(words) - len(p) + 1)):
+            return phrase
+    return ''
+
+
+def _echo(heard, said):
+    """Did the mic just catch Robo's own voice? (every word is in what he's saying)"""
+    words = set(_plain(said).split())
+    return bool(words) and all(w in words for w in _plain(heard).split())
+
 
 CANT_HEAR = Reply("I'd love to chat, but I can't hear you yet. "
                   'Run the install script to give me ears!', 'sad', end=True)
@@ -194,6 +235,34 @@ class Conversation:
         log.info('announcing: %s', text)
         self._say(Reply(text, mood, end=True))
 
+    def hush(self, heard=''):
+        """You said "stop" / "mute": quiet at once, no goodbye, and nothing he was
+        saving up to tell you either. Back to what he was doing."""
+        if not self.active:
+            return
+        log.info('hushed%s', f' ("{heard}")' if heard else '')
+        self._announcements.clear()
+        self.stop()
+
+    def _hush_watch(self, on):
+        """While he talks or thinks, listen only for a stop phrase."""
+        if self.ears is None or not self.ears.available:
+            return
+        if on:
+            self.ears.overhear(HUSH_PHRASES, self._overheard)
+        else:
+            self.ears.pause()
+
+    def _overheard(self, text):
+        if self.state not in (SPEAKING, THINKING):
+            return
+        said = hush_in(text)
+        if not said:
+            return
+        if self.state == SPEAKING and self.reply is not None and _echo(said, self.reply.text):
+            return                                # that was his own voice
+        self.hush(said)
+
     def on_wake_word(self):
         log.info('heard the wake word')
         self.start()
@@ -209,6 +278,7 @@ class Conversation:
         personality.on_reply(self.robot, reply, now)
         if self.ears:
             self.ears.pause()
+            self._hush_watch(True)    # ...except for "stop"
         style = 'evil' if self.robot.evil.active or reply.mood in EVIL_MOODS else 'normal'
         log.info('robo says (%s voice): %s', style, reply.text)
         self.utterance = None
@@ -241,11 +311,15 @@ class Conversation:
         if self.state != LISTENING:
             return
         log.info('heard: %s', text)
+        if is_hush(text):                         # "stop talking": no goodbye, just quiet
+            self.hush(text)
+            return
         self.turn += 1
         self._quiet = False                       # you answered: a real chat now
         self.state = THINKING
         self._thinking_since = self.robot.clock()
         self.robot.bubbles.discard({MIC}, self._thinking_since)
+        self._hush_watch(True)                    # "stop" while he thinks, too
         ctx = self.context()
         if self.robot.seeing:                     # you're showing him: a fresh look, right now
             from dataclasses import replace
