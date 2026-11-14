@@ -39,7 +39,9 @@ class ClaudeCode(AgentBackend):
         return AgentStatus(False, True, False, 'Claude Code is not logged in', self.login_hint)
 
     def command(self, prompt, system):
-        argv = [self.program, '-p', prompt, '--output-format', 'json',
+        # stream-json (not plain json): it also carries rate_limit_event, how much
+        # of your plan is used, for the usage bars
+        argv = [self.program, '-p', prompt, '--output-format', 'stream-json', '--verbose',
                 '--tools', '',                  # talk only: no files, no commands, no web
                 '--restricted', '--strict-mcp-config', '--disable-slash-commands',
                 '--effort', 'low',              # chatty answers: quick beats deep
@@ -59,7 +61,7 @@ class ClaudeCode(AgentBackend):
         argv.remove('')                         # no prompt argument: it comes on stdin
         i = argv.index('--output-format')
         argv[i + 1] = 'stream-json'
-        argv[i + 2:i + 2] = ['--verbose', '--input-format', 'stream-json']
+        argv[i + 2:i + 2] = ['--input-format', 'stream-json']
         message = {'type': 'user', 'message': {'role': 'user', 'content': [
             {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png',
                                          'data': base64.b64encode(png).decode('ascii')}},
@@ -82,6 +84,9 @@ class ClaudeCode(AgentBackend):
         if not isinstance(data, dict):
             return None
         kind = data.get('type')
+        if kind == 'rate_limit_event':
+            LEDGER.record_limits(data.get('rate_limit_info'))
+            return None
         if kind == 'assistant':
             events = []
             for block in (data.get('message') or {}).get('content') or ():
@@ -106,6 +111,7 @@ class ClaudeCode(AgentBackend):
         return None
 
     def parse(self, stdout, stderr, returncode):
+        _record_limits(stdout)
         data = _result_line(stdout) or load_json(stdout)
         if not isinstance(data, dict):
             detail = (stderr or stdout).strip().splitlines()[-1:] or ['no output']
@@ -131,6 +137,15 @@ class ClaudeCode(AgentBackend):
             error.usage = usage
             raise error
         return AgentAnswer(text, data.get('session_id'), usage)
+
+
+def _record_limits(stdout):
+    """stream-json output: remember the plan usage it reported (rate_limit_event)."""
+    for line in stdout.splitlines():
+        if '"rate_limit_event"' in line:
+            data = load_json(line)
+            if isinstance(data, dict) and data.get('type') == 'rate_limit_event':
+                LEDGER.record_limits(data.get('rate_limit_info'))
 
 
 def _result_line(stdout):

@@ -102,8 +102,20 @@ CSS = b"""
 .robo-status { font-weight: 700; }
 .robo-usage {
     background-color: #F4F7FB; border: 2px solid #C9D1E3; border-radius: 12px;
-    padding: 8px 10px; font-size: 9pt;
+    padding: 10px 12px 12px 12px;
 }
+.robo-usage-title { font-weight: 800; }
+.robo-usage-pct { font-weight: 800; }
+.robo-meter trough {
+    min-height: 12px; border-radius: 6px; border: 2px solid #3B4060;
+    background-image: none; background-color: #E3E8F2;
+}
+.robo-meter progress {
+    min-height: 12px; border-radius: 6px; border: none; background-image: none;
+    background-color: #43D17A;
+}
+.robo-meter.warn progress { background-color: #FFA94D; }
+.robo-meter.full progress { background-color: #FF5A64; }
 .robo-tabs {
     background-color: #EEF1F8; border-bottom: 2px solid #3B4060; padding: 8px 12px;
 }
@@ -203,10 +215,10 @@ class SettingsWindow:
             self._build()
         self._show_memory()
         self._show_designs()
+        self.applied = settings
         self._show_usage()
         if getattr(self, '_usage_timer', None) is None:      # keep it current while open
             self._usage_timer = GLib.timeout_add_seconds(5, self._show_usage)
-        self.applied = settings
         self._load(settings)
         self.snapshot = self._read()
         self._refresh()
@@ -389,10 +401,9 @@ class SettingsWindow:
         if f.key == 'agent':                   # only the AI brain has a status to show
             row.pack_start(status, False, False, 0)
         if f.key == 'daily_budget':            # ...and how much he has used
-            self._usage_label = _style(Gtk.Label(xalign=0), 'robo-usage')
-            self._usage_label.set_line_wrap(True)
-            self._usage_label.set_selectable(True)
-            row.pack_end(self._usage_label, False, False, 0)
+            self._usage_box = _style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8),
+                                     'robo-usage')
+            row.pack_end(self._usage_box, False, False, 0)
 
         def changed(*_):
             if f.key == 'agent':
@@ -509,14 +520,67 @@ class SettingsWindow:
         box.show_all()
 
     def _show_usage(self):
-        from robo.agents.usage import LEDGER
-        label = getattr(self, '_usage_label', None)
-        if label is not None:
-            label.set_text('Tokens used (counted from what Claude reports after every answer):\n'
-                           + '\n'.join('• ' + l for l in LEDGER.lines())
-                           + '\nHow much of your plan is left: Claude Code doesn\'t say, so he '
-                           "can't tell. He'll say when he hits the limit.")
+        """How much is used, as progress bars: your Claude plan's windows (as Claude
+        Code last reported them) and today's budget for his own ideas."""
+        from robo.agents.usage import LEDGER, resets_in_words, _short
+        box = getattr(self, '_usage_box', None)
+        if box is None:
+            return True
+        for child in box.get_children():
+            box.remove(child)
+        windows = LEDGER.plan_windows()
+        checked = LEDGER.plan_checked_at()
+        head = Gtk.Box(spacing=8)
+        head.pack_start(_style(Gtk.Label(label='How much is used', xalign=0),
+                               'robo-usage-title'), False, False, 0)
+        if checked:
+            head.pack_end(_style(Gtk.Label(label='updated ' + time.strftime(
+                '%H:%M', time.localtime(checked))), 'robo-help'), False, False, 0)
+        box.pack_start(head, False, False, 0)
+        for w in windows:
+            box.pack_start(self._meter(w.label, w.used, resets_in_words(w.resets_at)),
+                           False, False, 0)
+        if not windows:
+            note = _style(Gtk.Label(xalign=0, label='Your Claude plan: shown after his next '
+                                    'answer from Claude.'), 'robo-help')
+            note.set_line_wrap(True)
+            box.pack_start(note, False, False, 0)
+        budget = getattr(self.applied, 'budget_tokens', None) if self.applied else None
+        if budget:
+            used = LEDGER.tokens_today()
+            box.pack_start(self._meter('His own ideas today', used / budget,
+                                       f'{_short(used)} of {_short(budget)} tokens'),
+                           False, False, 0)
+        limit = LEDGER.recent_limit()
+        if limit:
+            warn = _style(Gtk.Label(xalign=0, label='⚠ Hit the plan limit at ' + time.strftime(
+                '%H:%M', time.localtime(limit['when']))), 'robo-help')
+            box.pack_start(warn, False, False, 0)
+        box.show_all()
         return True
+
+    @staticmethod
+    def _meter(label, used, detail=''):
+        """  Session (5 hours)   resets in 2 h          12%
+             [██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]          """
+        used = max(0.0, min(1.0, used))
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        top = Gtk.Box(spacing=8)
+        top.pack_start(_style(Gtk.Label(label=label, xalign=0), 'robo-row-label'),
+                       False, False, 0)
+        if detail:
+            top.pack_start(_style(Gtk.Label(label=detail, xalign=0), 'robo-help'),
+                           False, False, 0)
+        top.pack_end(_style(Gtk.Label(label=f'{round(used * 100)}%'), 'robo-usage-pct'),
+                     False, False, 0)
+        box.pack_start(top, False, False, 0)
+        bar = _style(Gtk.ProgressBar(fraction=used), 'robo-meter')
+        if used >= 0.85:
+            _style(bar, 'full')
+        elif used >= 0.6:
+            _style(bar, 'warn')
+        box.pack_start(bar, False, False, 0)
+        return box
 
     def _show_designs(self):
         """The outfits he designed himself, each with a button to throw it away."""

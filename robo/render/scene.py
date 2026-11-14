@@ -9,13 +9,16 @@ from .effects import draw_particles, draw_poof
 from .icons import draw_icon
 from .robot import draw_hearts, draw_robot, draw_zzz
 from .shapes import INK, RED, WHITE, circle, paint, speech_path
+from .usage_card import draw_usage_card
 
 ICON_SCALE = 1.15
 
 
-def draw_frame(cr, scale, pose, bubble, now, offset=0.0):
+def draw_frame(cr, scale, pose, bubble, now, offset=0.0, card=None):
     """cr: cairo context for the whole window; bubble may be None. `offset` (design
-    px) moves everything down: the window is a tall column while a web is out."""
+    px) moves everything down: the window is a tall column while a web is out.
+    `card`: (UsageCard, pop-in scale) when you hover over him, drawn where the
+    bubble goes."""
     cr.save()
     cr.set_operator(cairo.OPERATOR_SOURCE)
     cr.set_source_rgba(0, 0, 0, 0)
@@ -39,6 +42,11 @@ def draw_frame(cr, scale, pose, bubble, now, offset=0.0):
         cr.save()
         cr.translate(0, layout.bubble_offset(offset))
         draw_bubble(cr, bubble, now)
+        cr.restore()
+    if card is not None:
+        cr.save()
+        cr.translate(0, layout.bubble_offset(offset))
+        draw_usage_card(cr, *card)
         cr.restore()
     cr.restore()
 

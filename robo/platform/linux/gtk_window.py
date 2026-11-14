@@ -42,11 +42,13 @@ class GtkWindowHost(WindowHost):
         w.set_app_paintable(True)
         w.add_events(Gdk.EventMask.BUTTON_PRESS_MASK
                      | Gdk.EventMask.BUTTON_RELEASE_MASK
-                     | Gdk.EventMask.POINTER_MOTION_MASK)
+                     | Gdk.EventMask.POINTER_MOTION_MASK
+                     | Gdk.EventMask.LEAVE_NOTIFY_MASK)
         w.connect('draw', self._on_draw)
         w.connect('button-press-event', self._on_press)
         w.connect('button-release-event', self._on_release)
         w.connect('motion-notify-event', self._on_motion)
+        w.connect('leave-notify-event', self._on_leave)
         self._regions = None
         w.connect('realize', lambda *_: self._apply_regions())
 
@@ -149,6 +151,13 @@ class GtkWindowHost(WindowHost):
     def _on_motion(self, _w, ev):
         self.listener.pointer_motion(self._pointer(ev))
         return True
+
+    def _on_leave(self, _w, ev):
+        if ev.detail != Gdk.NotifyType.INFERIOR:
+            leave = getattr(self.listener, 'pointer_leave', None)
+            if leave:
+                leave()
+        return False
 
     def _on_release(self, _w, ev):
         self.listener.pointer_release(self._pointer(ev, ev.button))

@@ -20,6 +20,7 @@ from robo.tasks import TaskEnvironment, TaskManager, TaskRefused, make_task
 from . import layout, outfits, personality
 from .body import Body
 from .bubble import BubbleQueue
+from .usage_card import HoverWatch, build_card
 from . import characters
 from .evil import EvilMode
 from .effects import Effects
@@ -64,6 +65,7 @@ class Companion:
         self.share = None                       # platform ScreenShare (the app sets it)
         self.seeing = None                      # ShareInfo while you're showing him your screen
         self._share_asking = False              # the system picker is open
+        self.hover = HoverWatch()               # mouse resting on him: the usage card
         self._seen_at = 0.0                     # last time he looked (for SHARE_IDLE_SECONDS)
         self.effects = Effects(self.rng)
         self.travel = Traveller(self.rng)
@@ -221,6 +223,7 @@ class Companion:
             self._pending_click = None
             self._single_click(now)
 
+        self._update_hover(now)
         self._sync_window()
         self.host.redraw()
 
@@ -614,9 +617,35 @@ class Companion:
     def draw(self, cr):
         now = self.clock()
         offset = self._window_rect()[3]
-        draw_frame(cr, self.scale, build_pose(self, now), self.bubbles.current, now, offset)
+        card = None
+        if self.hover.visible:
+            from robo.agents.usage import LEDGER
+            card = (build_card(self.settings, LEDGER), self.hover.scale(now))
+        draw_frame(cr, self.scale, build_pose(self, now),
+                   None if card else self.bubbles.current, now, offset, card)
+
+    # ------------------------------------------------------------ hovering
+    def _over_robot(self, x, y):
+        """Window-local pixels -> is that on him (not his bubble)?"""
+        offset = self._window_rect()[3]
+        return layout.ROBOT_HITBOX.contains(x / self.scale, y / self.scale - offset)
+
+    def _update_hover(self, now):
+        if self.body.state == 'drag' or self._press:
+            self.hover.away(now)
+        elif self.hover.since is not None:          # still there? (if the platform can tell)
+            pos = self.host.pointer_position() if self.host is not None else None
+            if pos:
+                wx, wy = self._window_rect()[:2]
+                if not self._over_robot(pos[0] - wx, pos[1] - wy):
+                    self.hover.away(now)
+        self.hover.update(now)
+
+    def pointer_leave(self):
+        self.hover.away(self.clock())
 
     def pointer_press(self, ev: PointerEvent):
+        self.hover.away(self.clock())
         if ev.button == 3:
             self.host.show_menu(self.menu_items())
         elif ev.button == 1:
@@ -631,6 +660,10 @@ class Companion:
     def pointer_motion(self, ev: PointerEvent):
         p = self._press
         if not p:
+            if self._over_robot(ev.x, ev.y):
+                self.hover.over(self.clock())
+            else:
+                self.hover.away(self.clock())
             return
         if self.body.state != 'drag':
             if abs(ev.root_x - p['rx']) + abs(ev.root_y - p['ry']) < DRAG_THRESHOLD:

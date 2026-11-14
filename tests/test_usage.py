@@ -115,10 +115,127 @@ class LedgerTest(unittest.TestCase):
         self.assertIn('about 101 thousand tokens', text)
         self.assertIn('1 chat and 1 outfit design', text)
         self.assertIn('1.51 dollars', text)
-        self.assertIn("doesn't tell me how much of your plan is left", text)
+        self.assertIn("don't know how much of your plan is left", text)
         self.led.hit_limit('Limit reached, resets 6pm')
         self.assertIn('resets 6pm', self.led.spoken())
         self.assertTrue(any('Today: 92.0k in' in l for l in self.led.lines()))
+
+
+    def test_plan_windows_from_claude(self):
+        self.assertEqual(self.led.plan_windows(), [])
+        now = 1_000_000.0
+        self.led.record_limits({'status': 'allowed', 'rateLimitType': 'five_hour',
+                                'unifiedWindows': {
+                                    'seven_day': {'utilization': 0.09, 'resetsAt': now + 9e4},
+                                    'five_hour': {'utilization': 0.12, 'resetsAt': now + 600},
+                                    'seven_day_opus': {'utilization': 0.5},
+                                    'seven_day_omelette': {'utilization': 0.3}}})
+        ws = self.led.plan_windows()
+        self.assertEqual([(w.key, w.used) for w in ws],
+                         [('five_hour', 0.12), ('seven_day', 0.09), ('seven_day_opus', 0.5)])
+        self.assertEqual(ws[0].label, 'Session (5 hours)')
+        self.assertEqual(self.led.window_for_model('claude-opus-5-5').key, 'seven_day_opus')
+        self.assertIsNone(self.led.window_for_model('haiku'))
+        again = Ledger(self.path, today=self.today, clock=lambda: now + 700)
+        self.assertEqual(again.plan_windows()[0].used, 0.0)        # the session has reset
+        self.led.record('chat', Usage(10, 10))
+        self.assertIn('12 percent of this session and 9 percent of this week',
+                      self.led.spoken())
+        self.led.record_limits({'unifiedWindows': {}})              # nothing useful: kept
+        self.assertEqual(len(self.led.plan_windows()), 3)
+
+    def test_model_names(self):
+        from robo.agents.usage import pretty_model
+        self.assertEqual(pretty_model('claude-haiku-5-5'), 'Haiku 5.5')
+        self.assertEqual(pretty_model('claude-sonnet-4-5-20250929'), 'Sonnet 4.5')
+        self.assertEqual(pretty_model('opus'), 'Opus')
+        self.assertEqual(pretty_model(''), '')
+        self.led.record('chat', Usage(1, 1, model='claude-haiku-5-5'))
+        self.assertEqual(Ledger(self.path, today=self.today).last_model, 'claude-haiku-5-5')
+
+
+class ClaudeStreamTest(unittest.TestCase):
+    EVENT = {'type': 'rate_limit_event', 'rate_limit_info': {
+        'status': 'allowed', 'unifiedWindows': {
+            'five_hour': {'utilization': 0.4, 'resetsAt': 4_000_000_000, 'status': 'allowed'}}}}
+
+    def setUp(self):
+        import robo.agents.claude as claude_mod
+        self.mod, self.old = claude_mod, claude_mod.LEDGER
+        claude_mod.LEDGER = Ledger()
+
+    def tearDown(self):
+        self.mod.LEDGER = self.old
+
+    def test_chat_reads_the_plan_usage(self):
+        backend = make_backend('claude', tempfile.gettempdir())
+        argv = backend.command('hi', 'sys')
+        self.assertEqual(argv[argv.index('--output-format') + 1], 'stream-json')
+        img_argv, _ = backend.command_with_image('look', 'sys', b'png')
+        self.assertEqual(img_argv.count('--verbose'), 1)
+        out = '\n'.join(json.dumps(m) for m in ({'type': 'system', 'subtype': 'init'},
+                                                 self.EVENT, RESULT))
+        answer = backend.parse(out, '', 0)
+        self.assertEqual(answer.text, 'Beep!')
+        self.assertEqual(self.mod.LEDGER.plan_windows()[0].used, 0.4)
+
+    def test_tasks_read_it_too(self):
+        backend = make_backend('claude', tempfile.gettempdir())
+        self.assertIsNone(backend.task_event(json.dumps(self.EVENT)))
+        self.assertEqual(self.mod.LEDGER.plan_windows()[0].key, 'five_hour')
+
+
+class UsageCardTest(unittest.TestCase):
+    def setUp(self):
+        self.led, usage_mod.LEDGER = usage_mod.LEDGER, Ledger()
+
+    def tearDown(self):
+        usage_mod.LEDGER = self.led
+
+    def test_what_the_card_says(self):
+        from robo.core.usage_card import build_card
+        led = usage_mod.LEDGER
+        self.assertEqual(build_card(Settings(agent='off'), led).title, 'AI brain: off')
+        card = build_card(Settings(agent='claude'), led)
+        self.assertEqual((card.title, card.bars), ("Claude · Claude Code's default", []))
+        led.record('chat', Usage(1, 1, model='claude-opus-5-5'))
+        led.record_limits({'unifiedWindows': {'five_hour': {'utilization': 0.25},
+                                              'seven_day': {'utilization': 0.1},
+                                              'seven_day_opus': {'utilization': 0.6}}})
+        card = build_card(Settings(agent='claude'), led)
+        self.assertEqual(card.title, 'Claude · Opus 5.5')
+        self.assertEqual([(l, u) for l, u, _ in card.bars],
+                         [('Session', 0.25), ('Week (Opus)', 0.6)])
+        card = build_card(Settings(agent='claude', agent_model='haiku'), led)
+        self.assertEqual(card.title, 'Claude · Haiku')               # what you picked
+        self.assertEqual([l for l, _, _ in card.bars], ['Session', 'Week'])
+        self.assertIn("doesn't tell", build_card(Settings(agent='gemini'), led).note)
+
+    def test_hovering_shows_it(self):
+        from robo.core import usage_card
+        from robo.platform.base import PointerEvent
+        p = HeadlessPlatform()
+        robot = build_companion(Settings(dress_up_every=0, evil_after=0, chattiness='off'), p)
+        clock = [100.0]
+        robot.clock = lambda: clock[0]
+        s = robot.scale
+        on_him = PointerEvent(0, 85 * s, 200 * s, 0, 0)
+        robot.pointer_motion(on_him)
+        robot._update_hover(clock[0])
+        self.assertFalse(robot.hover.visible)
+        clock[0] += usage_card.HOVER_SECONDS + 0.1
+        robot.pointer_motion(on_him)                                 # still resting there
+        robot._update_hover(clock[0])
+        self.assertTrue(robot.hover.visible)
+        p.window.redraw()                                            # draws without trouble
+        robot.pointer_leave()
+        clock[0] += usage_card.POP_OUT + 0.1
+        robot._update_hover(clock[0])
+        self.assertFalse(robot.hover.visible)
+        robot.pointer_motion(PointerEvent(0, 2 * s, 2 * s, 0, 0))     # beside him: nothing
+        clock[0] += 5
+        robot._update_hover(clock[0])
+        self.assertFalse(robot.hover.visible)
 
 
 class RobotTest(unittest.TestCase):

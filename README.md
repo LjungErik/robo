@@ -211,6 +211,12 @@ Pick one in **Settings → AI brain → Talk through** (or `--agent claude` for 
 - Answers take a few seconds (he shows the ⚙️ thinking bubble). Click him to hush him;
   that also cancels the question. After 30 minutes without talking he starts a fresh
   conversation. `agent_model` in `settings.json` picks a model (default: the app's own).
+- **How much is used:** **Settings → AI brain** shows progress bars for your Claude
+  plan (the 5-hour session and the week, plus a per-model week when Claude reports
+  one) and for today's budget for his own ideas. Claude Code reports these numbers with
+  every answer, so they update whenever he talks to Claude.
+- **Hover over him** for 2 seconds and a little card pops up with the model he's using
+  and the same usage as bars. Move the mouse away and it goes.
 - Claude is tested; the ChatGPT and Gemini connections follow their CLIs' documentation
   but haven't been tried against real installations yet.
 - Using your own subscription through your own Claude Code is normal personal use. If you
