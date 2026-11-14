@@ -319,6 +319,36 @@ To add a hand-written (non-AI) task:
 3. Add a phrase to `RuleBrain` that replies with
    `action='start_task', action_arg='<kind>'`.
 
+## Plugins 🧩
+
+Plugins give Robo new abilities **while he runs**: put a plugin folder in
+`~/.config/robo/plugins/`, switch it on in **Settings → Plugins**, and every time
+you save one of its files he reloads it within a second. No restart, no build.
+
+A plugin is a `plugin.json` plus Python code. It can add things you can say to
+him, tools his AI brain uses mid-chat, menu items and background loops. With
+your permission it can also use:
+
+- 👁 **screen:** the screen or window you share with him;
+- 📷 **camera:** one picture at a time (he looks up, and the camera light comes on);
+- 🎮 **input:** your keyboard and mouse, after GNOME's own dialog. An orange banner
+  shows while it's on, and **"stop"**, a click on Robo, his menu or the banner
+  gives everything back at once;
+- 🧠 **ai:** his AI brain (it uses your plan).
+
+Each plugin runs as its own process in the same bubblewrap sandbox as his tasks:
+none of your files, no network, no desktop. Everything goes through Robo, who
+checks the permissions. A crash only restarts that plugin.
+
+Three come with him, switched off: **Dice** (the smallest example), **Camera
+peek** (*"look at me"*) and **Game buddy**. Game buddy combines screen, keys,
+mouse and AI to play along with you: *"play Minecraft with me"*, *"you do the
+walking"*, *"go chop that tree"*, *"stop"*. He looks, thinks for a few seconds
+and makes a few moves, so slow-paced games suit him. Many online games forbid
+bots, so only use it where that's allowed.
+
+How to write one: [`robo/plugins/README.md`](robo/plugins/README.md).
+
 ## Sandbox 🔒
 
 Every task runs in a **sandbox**: a separate process that can only reach what you
@@ -402,6 +432,9 @@ robo/
                           Gemini CLI (no API keys)
   tasks/                  work you give him: Task lifecycle, TaskManager (queue, pauses), catalog,
                           SandboxedTask
+  plugins/                hot-reloadable plugins: manifest, runner (one sandboxed process),
+                          services (what they may do), manager (folders, hot reload),
+                          builtin/ (dice, camera_peek, game_buddy); README.md: how to write one
   sandbox/                portable sandbox parts: Permissions, Workspace + change review,
                           Broker (downloads), Approver; worker/ runs inside the sandbox
   events.py               Event, list of KINDS, classify() for notification text

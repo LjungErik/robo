@@ -13,7 +13,7 @@ one model). Robo keeps the latest one (record_limits) and shows it as
 progress bars. He also remembers the last time he ran into the limit, and
 what Claude said about it ("resets 6pm").
 
-    LEDGER.record(kind, usage)   kind: 'chat', 'speak_up', 'task', 'design'
+    LEDGER.record(kind, usage)   kind: 'chat', 'speak_up', 'task', 'design', 'plugin'
     LEDGER.record_limits(info)   Claude Code's rate_limit_info
     LEDGER.plan_windows()        [PlanWindow('Session (5 hours)', 0.12, resets_at), ...]
     LEDGER.day() / .week()       totals
@@ -31,10 +31,11 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 KEEP_DAYS = 60
-KINDS = ('chat', 'speak_up', 'task', 'design')
+KINDS = ('chat', 'speak_up', 'task', 'design', 'plugin')
 KIND_WORDS = {'chat': ('chat', 'chats'), 'speak_up': ('thing I said on my own',
                                                       'things I said on my own'),
-              'task': ('task', 'tasks'), 'design': ('outfit design', 'outfit designs')}
+              'task': ('task', 'tasks'), 'design': ('outfit design', 'outfit designs'),
+              'plugin': ('plugin question', 'plugin questions')}
 
 
 @dataclass(frozen=True)

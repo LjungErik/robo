@@ -34,7 +34,7 @@ SHORT_WORDS = 6
 MOODS = ('happy', 'normal', 'surprised', 'sad', 'sing', 'focus', 'cat', 'roar', 'laugh',
          'yawn')
 AGENT_ACTIONS = ('wave', 'cheer', 'hearts', 'laugh', 'dance', 'dress_up', 'undress', 'nap',
-                 'travel', 'agent_task', 'design_outfit', 'stop_seeing')
+                 'travel', 'agent_task', 'design_outfit', 'stop_seeing', 'plugin')
 MAX_SPOKEN = 600                  # characters; he answers out loud, so keep it short
 FORGET_AFTER = 30 * 60            # seconds between conversations before he starts fresh
 
@@ -71,7 +71,9 @@ action (optional) makes your body do something while you speak:
   travel (fly / hang / teleport around the screen, only if your status says you can),
   stop_seeing (stop looking at the user's screen, when they say they're done showing you),
   design_outfit (arg = the user's idea, or "" for your own: you design a brand-new outfit
-  for yourself, which takes a few minutes; only if your status says you can do tasks).
+  for yourself, which takes a few minutes; only if your status says you can do tasks),
+  plugin (arg = {"tool": "<name>", "args": {...}}: use one of the plugin tools listed in
+  your status, when the user asks for what it does; its result is said after your words).
 If the user lets you choose what to wear, dress_up as what your status says you would \
 pick (or another one you like better) and say why.
 Only dress_up, undress, travel or nap when the user asks you to; the others you may use whenever they fit (wave hello, laugh at a joke, hearts for a compliment).
@@ -125,6 +127,9 @@ def _status_line(ctx):
     elif ctx.can_see:
         bits.append("you can't see the user's screen; if they want you to look, they can "
                     'right-click you and pick "Show Robo my screen"')
+    if ctx.plugin_tools:
+        bits.append('plugin tools you can use (action "plugin"): '
+                    + ' | '.join(ctx.plugin_tools))
     if ctx.favourite_outfits:
         bits.append('your favourite outfits: ' + ', '.join(ctx.favourite_outfits))
     if ctx.outfit_choice:
@@ -190,6 +195,18 @@ def parse_reply(raw, ctx):
         action, arg = None, None
     if action == 'agent_task':
         return _task_reply(data, arg, mood, ctx)
+    if action == 'plugin':
+        if isinstance(arg, str):
+            try:
+                arg = json.loads(arg)
+            except ValueError:
+                arg = None
+        names = {line.split(' ', 1)[0] for line in ctx.plugin_tools}
+        if isinstance(arg, dict) and arg.get('tool') in names:
+            args = arg.get('args') if isinstance(arg.get('args'), dict) else {}
+            arg = json.dumps({'tool': arg['tool'], 'args': args})
+        else:
+            action, arg = None, None
     memory = {}
     if data.get('feeling') in ('praised', 'hurt'):
         memory['feeling'] = data['feeling']

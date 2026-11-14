@@ -195,6 +195,7 @@ SECTIONS = (
     ('dress', 'Dressing up', '🎭'),
     ('designs', 'His own designs', '✏️'),
     ('wardrobe', 'Wardrobe', '🧳'),           # no settings: remove, export, import outfits
+    ('plugins', 'Plugins', '🧩'),             # no settings: plugins to switch on and off
     ('voice', 'Voice & talking', '🗣️'),
     ('personality', 'Personality', '💛'),
     ('brain', 'AI brain', '🧠'),
@@ -208,6 +209,7 @@ TABS = (
     ('voice', 'Voice', '🗣️', ('voice',)),
     ('personality', 'Personality', '💛', ('personality', 'evil')),
     ('brain', 'AI brain', '🧠', ('brain',)),
+    ('plugins', 'Plugins', '🧩', ('plugins',)),
 )
 
 FIELDS = (

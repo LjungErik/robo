@@ -64,6 +64,14 @@ class LinuxPlatform(Platform):
         from .screencast import PortalScreenShare
         return PortalScreenShare()
 
+    def input_control(self):
+        from .remote_input import PortalInput
+        return PortalInput()
+
+    def camera(self):
+        from .camera import GstCamera
+        return GstCamera()
+
     def battery_percent(self):
         import glob
         for bat in sorted(glob.glob('/sys/class/power_supply/BAT*')):
@@ -103,11 +111,11 @@ class LinuxPlatform(Platform):
     def has_settings_window(self):
         return True
 
-    def open_settings(self, settings, on_apply, memory=None, designs=None):
+    def open_settings(self, settings, on_apply, memory=None, designs=None, plugins=None):
         if getattr(self, '_settings_window', None) is None:
             from .settings_window import SettingsWindow
             self._settings_window = SettingsWindow()
-        self._settings_window.open(settings, on_apply, memory, designs)
+        self._settings_window.open(settings, on_apply, memory, designs, plugins)
 
     def data_dir(self):
         from .paths import data_dir

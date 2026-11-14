@@ -168,6 +168,21 @@ def _gear(cr, cx, cy, r, teeth, angle, color):
     draw_gear(cr, cx, cy, r, teeth, angle, color, hole=BG_BOTTOM)
 
 
+def _open(path):
+    """Show a file or folder in its usual app (a log that doesn't exist yet is made)."""
+    from gi.repository import Gio
+    if not os.path.exists(path):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, 'a').close()
+        except OSError:
+            return
+    try:
+        Gio.AppInfo.launch_default_for_uri(GLib.filename_to_uri(path, None), None)
+    except GLib.Error:
+        pass
+
+
 def _documents():
     """Where export / import dialogs start: your Documents folder (or home)."""
     path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)
@@ -205,6 +220,7 @@ class SettingsWindow:
         self._memory_box = None
         self.designs_dir = None
         self._wardrobe_box = None
+        self.plugins = None
         self._model_combos = {}
         self._agent_for_models = ''
         self._picking = False
@@ -215,14 +231,18 @@ class SettingsWindow:
         self.effects = Effects(random.Random())
 
     # ------------------------------------------------------------ public
-    def open(self, settings, on_apply, memory=None, designs=None):
+    def open(self, settings, on_apply, memory=None, designs=None, plugins=None):
         self.on_apply = on_apply
         self.memory = memory
         self.designs_dir = designs
+        self.plugins = plugins
         if self.win is None:
             self._build()
         self._show_memory()
         self._show_wardrobe()
+        self._show_plugins()
+        if getattr(self, '_plugins_timer', None) is None:    # status, and new plugin folders
+            self._plugins_timer = GLib.timeout_add_seconds(2, self._refresh_plugin_status)
         self.applied = settings
         self._show_usage()
         if getattr(self, '_usage_timer', None) is None:      # keep it current while open
@@ -232,6 +252,7 @@ class SettingsWindow:
         self._refresh()
         self.win.show_all()
         self.win.present()
+        self._refresh_plugin_status()
         if self._timer is None:
             self._timer = GLib.timeout_add(FRAME_MS, self._animate)
 
@@ -286,6 +307,10 @@ class SettingsWindow:
             getattr(content, f'set_margin_{side}')(18)
         empty = True
         for sid in section_ids:
+            if sid == 'plugins':                   # not settings: plugins to switch on
+                content.pack_start(self._plugins_card(*titles[sid]), False, False, 0)
+                empty = False
+                continue
             if sid == 'wardrobe':                  # not settings: outfits to manage
                 content.pack_start(self._wardrobe_card(*titles[sid]), False, False, 0)
                 empty = False
@@ -833,6 +858,162 @@ class SettingsWindow:
             GLib.source_remove(self._status_timer)
         self._status_timer = GLib.timeout_add(3500, self._clear_status)
 
+    # ------------------------------------------------------------ plugins
+    def _plugins_card(self, title, emoji):
+        card = _style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10), 'robo-card')
+        card.pack_start(_style(Gtk.Label(label=f'{emoji}  {title}', xalign=0),
+                               'robo-card-title'), False, False, 0)
+        hint = _style(Gtk.Label(xalign=0, label=(
+            'New abilities for Robo. Edit a plugin and he reloads it the moment you save, '
+            'no restart. Each one runs locked in a sandbox (none of your files, no '
+            'internet) and can only do what you allow here.')), 'robo-help')
+        hint.set_line_wrap(True)
+        card.pack_start(hint, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        folder = _style(Gtk.Button(label='📂  My plugins folder'), 'robo-secondary')
+        folder.set_tooltip_text('Put plugin folders here (each with plugin.json and plugin.py)')
+        folder.connect('clicked', lambda *_: self._open_plugin_folder())
+        howto = _style(Gtk.Button(label='📖  How to make one'), 'robo-secondary')
+        howto.connect('clicked', lambda *_: _open(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'plugins', 'README.md')))
+        buttons.pack_start(folder, False, False, 0)
+        buttons.pack_start(howto, False, False, 0)
+        card.pack_start(buttons, False, False, 0)
+        self._plugins_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.pack_start(self._plugins_box, False, False, 0)
+        return card
+
+    def _open_plugin_folder(self):
+        if self.plugins is None:
+            return
+        folder = self.plugins.directories[-1]
+        os.makedirs(folder, exist_ok=True)
+        _open(folder)
+
+    def _show_plugins(self):
+        """List every plugin: what it does, may do, how it's doing, and a switch."""
+        box = getattr(self, '_plugins_box', None)
+        if box is None:
+            return False
+        for child in box.get_children():
+            box.remove(child)
+        self._plugin_status = {}
+        m = self.plugins
+        if m is None:
+            box.pack_start(_style(Gtk.Label(label='Plugins are not available here.', xalign=0),
+                                  'robo-help'), False, False, 0)
+            box.show_all()
+            return False
+        for runner in sorted(m.runners.values(), key=lambda r: r.manifest.name.lower()):
+            box.pack_start(self._plugin_row(runner), False, False, 0)
+        for folder, problem in sorted(m.problems.items()):
+            line = _style(Gtk.Label(label=f'⚠  {problem}', xalign=0), 'robo-help')
+            line.set_line_wrap(True)
+            box.pack_start(line, False, False, 0)
+        if not m.runners and not m.problems:
+            box.pack_start(_style(Gtk.Label(label='No plugins yet.', xalign=0), 'robo-help'),
+                           False, False, 0)
+        self._plugins_seen = set(m.runners)
+        box.show_all()
+        self._refresh_plugin_status()
+        return False
+
+    def _plugin_row(self, runner):
+        from robo.plugins.manifest import PERMISSIONS
+        mf = runner.manifest
+        row = _style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3), 'robo-usage')
+        top = Gtk.Box(spacing=8)
+        name = f'{mf.icon}  {mf.name}' + (f'  {mf.version}' if mf.version else '')
+        top.pack_start(_style(Gtk.Label(label=name, xalign=0), 'robo-row-label'), True, True, 0)
+        sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+        sw.set_active(bool((self.plugins.choices.get(mf.id) or {}).get('enabled')))
+        sw.connect('state-set', lambda w, on, r=runner: self._toggle_plugin(w, on, r))
+        top.pack_end(sw, False, False, 0)
+        row.pack_start(top, False, False, 0)
+        if mf.description:
+            about = _style(Gtk.Label(label=mf.description, xalign=0), 'robo-help')
+            about.set_line_wrap(True)
+            row.pack_start(about, False, False, 0)
+        if mf.permissions:
+            may = '   '.join(f'{PERMISSIONS[p][0]} {p}' for p in mf.permissions)
+            perms = _style(Gtk.Label(label=f'May use: {may}', xalign=0), 'robo-help')
+            perms.set_tooltip_text('\n'.join(f'{PERMISSIONS[p][0]} {PERMISSIONS[p][1]}'
+                                             for p in mf.permissions))
+            row.pack_start(perms, False, False, 0)
+        bottom = Gtk.Box(spacing=6)
+        status = Gtk.Label(xalign=0)
+        status.set_line_wrap(True)
+        bottom.pack_start(status, True, True, 0)
+        logs = Gtk.Button(label='Log')
+        logs.set_relief(Gtk.ReliefStyle.NONE)
+        logs.set_tooltip_text('What the plugin printed (its errors too)')
+        logs.connect('clicked', lambda *_: _open(os.path.join(runner.data_dir, 'plugin.log')))
+        reload_ = Gtk.Button(label='↻ Reload')
+        reload_.set_relief(Gtk.ReliefStyle.NONE)
+        reload_.set_tooltip_text('Start it again (it also reloads by itself when you save)')
+        reload_.connect('clicked', lambda *_: (self.plugins.reload(mf.id),
+                                               self._refresh_plugin_status()))
+        bottom.pack_end(reload_, False, False, 0)
+        bottom.pack_end(logs, False, False, 0)
+        row.pack_start(bottom, False, False, 0)
+        self._plugin_status[mf.id] = (status, sw)
+        return row
+
+    def _toggle_plugin(self, switch, on, runner):
+        from robo.plugins import BUILTIN_DIR
+        from robo.plugins.manifest import PERMISSIONS
+        mf = runner.manifest
+        if on and mf.permissions:
+            ask = Gtk.MessageDialog(transient_for=self.win, modal=True,
+                                    message_type=Gtk.MessageType.QUESTION,
+                                    buttons=Gtk.ButtonsType.NONE,
+                                    text=f'Switch on {mf.name}?')
+            ask.format_secondary_text(
+                'It runs in a sandbox, without your files or the internet. You allow it to:\n\n'
+                + '\n'.join(f'{PERMISSIONS[p][0]}  {PERMISSIONS[p][1]}' for p in mf.permissions)
+                + ('' if mf.folder.startswith(BUILTIN_DIR) else
+                   '\n\nOnly switch on plugins you trust.'))
+            ask.add_button('Cancel', Gtk.ResponseType.CANCEL)
+            ask.add_button('Switch on', Gtk.ResponseType.OK)
+            answer = ask.run()
+            ask.destroy()
+            if answer != Gtk.ResponseType.OK:
+                switch.set_active(False)
+                return True
+        self.plugins.set_enabled(mf.id, on)
+        switch.set_state(on)
+        self._flash(f'{mf.name} is {"on" if on else "off"}')
+        GLib.timeout_add(600, self._refresh_plugin_status)
+        return True
+
+    def _refresh_plugin_status(self):
+        m = self.plugins
+        if m is None or not self.win or not self.win.get_visible():
+            return False
+        if set(m.runners) != getattr(self, '_plugins_seen', set()):
+            self._show_plugins()                       # one was added or removed
+            return True
+        for pid, (label, _sw) in getattr(self, '_plugin_status', {}).items():
+            r = m.runners.get(pid)
+            if r is None:
+                continue
+            if m.needs_review(pid):
+                text = '⚠  It now asks for more permissions: switch it off and on to allow'
+            elif r.state == 'running':
+                bits = [f'{len(r.commands)} things to say', f'{len(r.tools)} AI tools',
+                        f'{len(r.menus)} menu items']
+                text = '🟢  Running: ' + ', '.join(bits)
+            elif r.state in ('starting', 'stopping'):
+                text = f'🟡  {r.state.capitalize()}…'
+            elif r.state in ('crashed', 'broken'):
+                text = f'🔴  {"Restarting after a crash" if r.state == "crashed" else "Stopped"}'\
+                       f': {r.problem or "see its log"}'
+            else:
+                text = '⚪  Off'
+            label.set_text(text)
+        return True
+
     def _chip_flow(self):
         flow = Gtk.FlowBox()
         flow.set_selection_mode(Gtk.SelectionMode.NONE)
@@ -995,6 +1176,9 @@ class SettingsWindow:
         if getattr(self, '_usage_timer', None) is not None:
             GLib.source_remove(self._usage_timer)
             self._usage_timer = None
+        if getattr(self, '_plugins_timer', None) is not None:
+            GLib.source_remove(self._plugins_timer)
+            self._plugins_timer = None
         if self._timer is not None:
             GLib.source_remove(self._timer)
             self._timer = None

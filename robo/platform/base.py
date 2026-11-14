@@ -50,6 +50,52 @@ class ShareInfo:
     rect: Optional[Rect] = None              # where it is on the desktop, if known
 
 
+class InputControl:
+    """Robo (a plugin, really) using your keyboard and mouse. start() must ask
+    you first, in a way Robo can't click through (Linux: GNOME's RemoteDesktop
+    portal), and the desktop should show while it's on. Everything is on the
+    main thread."""
+    active = False
+
+    def problem(self) -> Optional[str]:
+        """Why it can't work here (None = it can)."""
+        return 'not available on this computer'
+
+    def start(self, on_started: Callable[[], None], on_ended: Callable[[str], None]) -> None:
+        """Ask you. on_started() once allowed; on_ended(reason) when it's over
+        (you said no, stopped it from the desktop, or stop() was called)."""
+        on_ended(self.problem() or 'not available')
+
+    def key(self, name: str, down: bool) -> bool:
+        """Press / release a key by name ('w', 'space', 'ctrl', 'Return', 'F5').
+        False if there's no such key."""
+        return False
+
+    def button(self, name: str, down: bool) -> bool:
+        """'left', 'right' or 'middle'."""
+        return False
+
+    def move(self, dx: float, dy: float) -> None:
+        """Move the pointer relative to where it is (games: look around)."""
+
+    def scroll(self, steps: int) -> None:
+        """Mouse wheel: positive scrolls down."""
+
+    def stop(self) -> None:
+        """Give the keyboard and mouse back (calls on_ended)."""
+
+
+class Camera:
+    """Taking a picture with your camera (the platform shows when it does)."""
+
+    def problem(self) -> Optional[str]:
+        return 'no camera'
+
+    def snapshot(self, on_done: Callable[[Optional[bytes], Optional[str]], None]) -> None:
+        """on_done(png, None) or on_done(None, why), later, on the main thread."""
+        on_done(None, self.problem())
+
+
 class ScreenShare:
     """You show Robo your screen, on purpose, and you can see that you are.
 
@@ -287,6 +333,18 @@ class Platform(ABC):
         """Letting you show Robo your screen (None if this platform can't)."""
         return None
 
+    def input_control(self) -> Optional[InputControl]:
+        """Letting a plugin use your keyboard and mouse (None if this platform can't)."""
+        return None
+
+    def camera(self) -> Optional[Camera]:
+        """Letting a plugin take pictures with your camera (None if it can't)."""
+        return None
+
+    def plugin_dir(self) -> str:
+        """Where your own plugins live (~/.config/robo/plugins on Linux)."""
+        return os.path.join(self.config_dir(), 'plugins')
+
     def speech_input(self) -> Optional[SpeechInput]:
         return None
 
@@ -326,8 +384,9 @@ class Platform(ABC):
         return False
 
     def open_settings(self, settings: Settings, on_apply: Callable[[Settings], None],
-                      memory=None, designs=None) -> None:
+                      memory=None, designs=None, plugins=None) -> None:
         """`memory` (robo.core.memory.Memory) lets the window show and erase it;
+        `plugins` (robo.plugins.PluginManager) lists plugins to switch on and off;
         `designs` is the folder of outfits he designed himself; the window can list,
         remove, export and import outfits (robo.design.sharing) next to it."""
         raise NotImplementedError

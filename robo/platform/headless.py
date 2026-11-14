@@ -13,8 +13,9 @@ import os
 import cairo
 
 from robo.core.geometry import Rect
-from robo.platform.base import (IdleMonitor, Platform, Scheduler, ScreenShare, ShareInfo,
-                                SpeechInput, SpeechOutput, Utterance, WindowHost)
+from robo.platform.base import (Camera, IdleMonitor, InputControl, Platform, Scheduler,
+                                ScreenShare, ShareInfo, SpeechInput, SpeechOutput, Utterance,
+                                WindowHost)
 from robo.sandbox import Approver, SandboxBackend, SandboxProcess
 
 
@@ -250,6 +251,19 @@ class FakeSandbox(SandboxBackend):
         return self.problem
 
     def launch(self, spec):
+        if spec.entry == 'plugin_host.py':      # tests: a real plugin, but NOT isolated
+            import subprocess
+            import sys
+            from robo.sandbox.backend import WORKER_DIR, PipeProcess
+            log = open(spec.log_path or os.devnull, 'ab')
+            popen = subprocess.Popen([sys.executable, '-I', os.path.join(WORKER_DIR, spec.entry)],
+                                     cwd=spec.work_dir, stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=log, text=True,
+                                     start_new_session=True)
+            log.close()
+            proc = PipeProcess(popen)
+            self.launched.append((spec, proc))
+            return proc
         proc = FakeSandboxProcess(self.clock)
         self.launched.append((spec, proc))
         return proc
@@ -311,6 +325,69 @@ class FakeSandboxProcess(SandboxProcess):
         return -9 if self.killed else (0 if self._done else None)
 
 
+class FakeInput(InputControl):
+    """Keyboard and mouse that only record. `allow` = what you answer GNOME's dialog."""
+
+    def __init__(self):
+        self.allow = True
+        self.active = False
+        self.events = []            # ('key', 'w', True), ('move', 10, 0)...
+        self.held = set()
+        self.asked = 0
+        self._ended = None
+
+    def problem(self):
+        return None
+
+    def start(self, on_started, on_ended):
+        self.asked += 1
+        if not self.allow:
+            on_ended('you said no')
+            return
+        self.active, self._ended = True, on_ended
+        on_started()
+
+    def key(self, name, down):
+        if not name or name == 'nonsense':
+            return False
+        self.events.append(('key', name, down))
+        (self.held.add if down else self.held.discard)(name)
+        return True
+
+    def button(self, name, down):
+        if name not in ('left', 'right', 'middle'):
+            return False
+        self.events.append(('button', name, down))
+        (self.held.add if down else self.held.discard)('mouse ' + name)
+        return True
+
+    def move(self, dx, dy):
+        self.events.append(('move', dx, dy))
+
+    def scroll(self, steps):
+        self.events.append(('scroll', steps))
+
+    def stop(self):
+        if self.active:
+            self.active = False
+            ended, self._ended = self._ended, None
+            if ended:
+                ended('stopped')
+
+
+class FakeCamera(Camera):
+    def __init__(self):
+        self.png = b'\x89PNG fake camera picture'
+        self.taken = 0
+
+    def problem(self):
+        return None
+
+    def snapshot(self, on_done):
+        self.taken += 1
+        on_done(self.png, None)
+
+
 class FakeApprover(Approver):
     """Answers `answer` (default yes) and records what it was asked."""
 
@@ -349,6 +426,8 @@ class HeadlessPlatform(Platform):
         self.fake_sandbox = FakeSandbox(self.clock)
         self.fake_approver = FakeApprover()
         self.share = FakeScreenShare()
+        self.fake_input = FakeInput()
+        self.fake_camera = FakeCamera()
         self.tmp_task_dir = None
 
     def clock(self):
@@ -376,6 +455,15 @@ class HeadlessPlatform(Platform):
     def screen_share(self):
         return self.share
 
+    def input_control(self):
+        return self.fake_input
+
+    def camera(self):
+        return self.fake_camera
+
+    def plugin_dir(self):
+        return os.path.join(self.task_dir(), 'plugins-mine')
+
     def battery_percent(self):
         return self.battery
 
@@ -401,7 +489,7 @@ class HeadlessPlatform(Platform):
     def has_settings_window(self):
         return True
 
-    def open_settings(self, settings, on_apply, memory=None, designs=None):
+    def open_settings(self, settings, on_apply, memory=None, designs=None, plugins=None):
         self.settings_opened.append((settings, on_apply))
 
     def data_dir(self):

@@ -31,6 +31,8 @@ THINK_BUBBLE_DELAY = 0.15     # only show "thinking" if the brain takes a moment
 MIC, THINKING_ICON = 'mic', 'thinking'      # see bubble.TALK_ICONS
 EVIL_MOODS = ('laugh', 'evil')   # these lines are said in the evil voice ("mwahaha")
 
+WAKE_PHRASES = ('hey robo', 'hi robo', 'robo', 'hey robot', 'robot')
+
 # Say one of these (alone) and he stops talking and listening right away.
 HUSH_PHRASES = ('stop', 'stop it', 'stop talking', 'stop speaking', 'stop now', 'please stop',
                 'mute', 'be quiet', 'quiet', 'shush', 'hush', 'shut up', 'silence',
@@ -132,6 +134,7 @@ class Conversation:
         self._thinking_since = None
         self._announcements = []
         self._quiet = False
+        self.guarding = False         # mic open only for "stop" (a plugin has the controls)
 
     # ------------------------------------------------------------ setup
     def attach(self, brain, voice=None, ears=None):
@@ -182,7 +185,8 @@ class Conversation:
                        outfit_choice=pick.id if pick else None,
                        outfit_because=pick.because if pick else '',
                        favourite_outfits=tuple(r.taste.favourites(
-                           c.id for c in r.outfit_candidates())))
+                           c.id for c in r.outfit_candidates())),
+                       plugin_tools=tuple(r.plugins.describe_tools()) if r.plugins else ())
 
     def _agent_tasks(self):
         backend = getattr(self.brain, 'backend', None)
@@ -198,6 +202,7 @@ class Conversation:
             return
         now = self.robot.clock()
         log.info('conversation started')
+        self.guarding = False
         self.turn = 0
         self._quiet = quiet
         self.brain.conversation_started(now)
@@ -238,11 +243,36 @@ class Conversation:
     def hush(self, heard=''):
         """You said "stop" / "mute": quiet at once, no goodbye, and nothing he was
         saving up to tell you either. Back to what he was doing."""
+        self.robot.stop_control('you said stop')     # a plugin using the keyboard: let go
         if not self.active:
             return
         log.info('hushed%s', f' ("{heard}")' if heard else '')
         self._announcements.clear()
         self.stop()
+
+    # "Stop" while a plugin has the keyboard and mouse but you're not chatting
+    def guard(self):
+        """Listen for "stop" (and "Hey Robo") between conversations."""
+        if self.active or self.guarding or not self.can_hear:
+            return
+        self.guarding = True
+        self.ears.overhear(HUSH_PHRASES + WAKE_PHRASES, self._guard_heard)
+
+    def unguard(self):
+        if self.guarding and not self.active:
+            self.guarding = False
+            self.ears.set_wake_word(self._wake_word, self.on_wake_word)   # mic back as it was
+
+    def _guard_heard(self, text):
+        if not self.guarding or self.active:
+            return
+        if hush_in(text):
+            log.info('heard "%s": taking the controls back', text)
+            self.robot.stop_control('you said stop')
+            self.unguard()
+        elif any(w in _plain(text).split() for w in ('robo', 'robot')):
+            self.guarding = False
+            self.start()
 
     def _hush_watch(self, on):
         """While he talks or thinks, listen only for a stop phrase."""
@@ -271,6 +301,7 @@ class Conversation:
     def _say(self, reply):
         now = self.robot.clock()
         self.state = SPEAKING
+        self.guarding = False
         self.reply = reply
         self.robot.bubbles.discard(TALK_ICONS, now)
         if reply.icon:
@@ -314,6 +345,11 @@ class Conversation:
         if is_hush(text):                         # "stop talking": no goodbye, just quiet
             self.hush(text)
             return
+        plugins = self.robot.plugins
+        pick = plugins.command_for(text) if plugins else None
+        if pick is not None:                      # a plugin answers this one
+            self._ask_plugin(*pick, text)
+            return
         self.turn += 1
         self._quiet = False                       # you answered: a real chat now
         self.state = THINKING
@@ -325,6 +361,25 @@ class Conversation:
             from dataclasses import replace
             ctx = replace(ctx, screen=self.robot.look_at_screen())
         self.brain.ask(text, ctx, self._answer)
+
+    def _ask_plugin(self, runner, command, text):
+        self.turn += 1
+        self._quiet = False
+        self.state = THINKING
+        self._thinking_since = self.robot.clock()
+        self.robot.bubbles.discard({MIC}, self._thinking_since)
+        self._hush_watch(True)
+        log.info('plugin %s answers "%s"', runner.id, text)
+
+        def done(value, error):
+            if error:
+                log.warning('plugin %s: %s', runner.id, error)
+                self._answer(Reply(f'Oops, my {runner.manifest.name} plugin had a problem: '
+                                   f'{error[:120]}', 'sad'))
+            else:
+                self._answer(Reply(' '.join(str(value or '').split())[:600] or 'Okay!',
+                                   'happy'))
+        runner.invoke('command', command, done, text=text)
 
     def _answer(self, reply):
         if self.state == THINKING:
@@ -346,6 +401,7 @@ class Conversation:
         self.robot.bubbles.discard(TALK_ICONS, now)
         self.brain.conversation_ended(now)
         personality.on_conversation_ended(self.robot, reply, now)
+        self.guarding = False
         if self.ears and self.ears.available:
             self.ears.set_wake_word(self._wake_word, self.on_wake_word)
         if self._announcements:

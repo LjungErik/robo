@@ -81,6 +81,7 @@ class Companion:
         self._next_initiative = 0.0
         self._last_grab_line = -1e9
         self.conversation = Conversation(self)
+        self.plugins = None         # robo.plugins.PluginManager (the app sets it)
         self.body = None            # created in attach(), once we know the screen
         self.bounds = None
         self.host: WindowHost = None
@@ -218,6 +219,7 @@ class Companion:
         self._update_travel(now, dt)
         self._update_tasks(now, dt)
         self._update_seeing(now)
+        self._update_plugins(now)
         self.conversation.update(now)
         if self._pending_click is not None and now - self._pending_click > DOUBLE_CLICK_SECONDS:
             self._pending_click = None
@@ -382,12 +384,17 @@ class Companion:
         self._seen_at = self.clock()
         return self.share.grab()
 
+    def _share_changed(self, seeing):
+        if self.plugins is not None:
+            self.plugins.services.share_changed(seeing)
+
     def _share_started(self, info):
         self._share_asking = False
         self.seeing = info
         self._seen_at = self.clock()
         log.info('you are showing Robo your %s', info.kind)
         personality.on_seeing(self, self.clock())
+        self._share_changed(True)
 
     def _share_ended(self, reason):
         was = self.seeing
@@ -395,6 +402,60 @@ class Companion:
         self.seeing = None
         log.info('not seeing your screen any more (%s)', reason)
         personality.on_not_seeing(self, self.clock(), was is not None)
+        self._share_changed(False)
+
+    # ------------------------------------------------------------ plugins
+    def _update_plugins(self, now):
+        if self.plugins is None:
+            return
+        self.plugins.update(now)
+        if self.controlled and not self.conversation.active:
+            self.conversation.guard()                  # "stop" works while it plays
+        elif not self.controlled and self.conversation.guarding:
+            self.conversation.unguard()
+
+    @property
+    def controlled(self):
+        """A plugin is using your keyboard and mouse right now."""
+        return self.plugins is not None and self.plugins.services.controlling
+
+    def stop_control(self, reason='you took the controls back'):
+        if self.plugins is not None:
+            self.plugins.services.stop_control(reason)
+
+    def emote(self, action):
+        personality.emote(self, action, self.clock())
+
+    def camera_flash(self):
+        """A plugin is taking a picture: he looks up, surprised (and the camera light is on)."""
+        now = self.clock()
+        self.face.show(F.SURPRISED, now, 1.2)
+
+    def use_plugin_tool(self, arg):
+        """His AI brain chose a plugin tool (Reply action 'plugin')."""
+        import json
+        try:
+            data = json.loads(arg)
+        except ValueError:
+            return
+        runner = self.plugins.find_tool(data.get('tool')) if self.plugins else None
+        if runner is None:
+            return
+
+        def done(value, error):
+            if error:
+                log.warning('plugin tool %s: %s', data.get('tool'), error)
+            elif value:
+                self.conversation.announce(' '.join(str(value).split())[:500])
+        runner.invoke('tool', data['tool'], done, args=data.get('args') or {})
+
+    def run_plugin_menu(self, runner, item):
+        def done(value, error):
+            if error:
+                log.warning('plugin %s menu: %s', runner.id, error)
+            elif value:
+                self.conversation.announce(' '.join(str(value).split())[:500])
+        runner.invoke('menu', item, done)
 
     def _update_seeing(self, now):
         if self.seeing and now - self._seen_at > SHARE_IDLE_SECONDS \
@@ -564,6 +625,8 @@ class Companion:
         """The app is closing: stop showing him the screen, stop every task."""
         self.stop_showing()
         self.tasks.abort_all(self.clock())
+        if self.plugins is not None:
+            self.plugins.shutdown()
 
     def abort_task(self, everything=False):
         """Abandon the current task (or all of them). Returns the aborted tasks."""
@@ -693,7 +756,9 @@ class Companion:
             self._pending_click = now                  # wait: maybe a double-click
 
     def _single_click(self, now):
-        if self.conversation.active:
+        if self.controlled:
+            self.stop_control('you clicked Robo')      # a plugin had the controls
+        elif self.conversation.active:
             self.conversation.stop()                   # shh
         elif (self.wardrobe.current and not self.wardrobe.changing(now)
               and not self.busy_working):
@@ -739,6 +804,11 @@ class Companion:
             label = {'fly': '🚀  Fly around', 'hang': '🕸️  Swing up',
                      'teleport': '✨  Teleport'}.get(self.travel.abilities(self)[0].kind)
             items.append(MenuItem(label, lambda: self.travel.start_kind(self, '', now())))
+        if self.controlled:
+            items.append(MenuItem('🎮  Take back my keyboard and mouse', self.stop_control))
+        if self.plugins is not None:
+            for label, runner, item in self.plugins.menu_items():
+                items.append(MenuItem(label[:48], lambda r=runner, i=item: self.run_plugin_menu(r, i)))
         if self.conversation.active:
             items.append(MenuItem('🤐  Stop talking', self.conversation.stop))
         else:

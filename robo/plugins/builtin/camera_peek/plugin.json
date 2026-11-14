@@ -1,0 +1,9 @@
+{
+  "id": "camera_peek",
+  "name": "Camera peek",
+  "description": "Robo looks at you through your camera when you ask: \"look at me\", \"how do I look\", \"what am I holding\". One picture each time; nothing is recorded.",
+  "version": "1.0",
+  "author": "Robo",
+  "icon": "📷",
+  "permissions": ["camera", "ai"]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "dice",
+  "name": "Dice",
+  "description": "Flip a coin or roll dice: \"flip a coin\", \"roll a dice\". The smallest example plugin: copy it to start your own.",
+  "version": "1.0",
+  "author": "Robo",
+  "icon": "🎲",
+  "permissions": []
+}

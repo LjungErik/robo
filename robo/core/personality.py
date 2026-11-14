@@ -383,23 +383,12 @@ def on_conversation_started(robot, now):
     body.hop(now)
 
 
-def on_reply(robot, reply, now):
-    """Do what the brain's Reply asks for, as he starts saying it."""
+EMOTES = ('wave', 'cheer', 'hearts', 'laugh', 'dance')
+
+
+def emote(robot, action, now):
+    """A quick show of feelings (a Reply's action, or a plugin's plugin.emote)."""
     face, body, wardrobe = robot.face, robot.body, robot.wardrobe
-    body.stop(now, 30, 40)                 # stand still while chatting
-    action = reply.action
-    if reply.feeling == 'praised':
-        robot.mind.complimented()
-        _outfit_feedback(robot, outfits.PRAISED)
-    elif reply.feeling == 'hurt':
-        robot.mind.insulted()
-        _outfit_feedback(robot, outfits.HURT)
-    if reply.user_name:
-        robot.memory.remember_name(reply.user_name)
-    for fact in reply.remember:
-        robot.memory.remember(fact)
-    if action == 'forget':
-        robot.memory.forget(reply.action_arg or 'all')
     if action == 'wave':
         face.show(F.WAVE, now, 2.2)
     elif action == 'cheer':
@@ -419,6 +408,27 @@ def on_reply(robot, reply, now):
             face.show(F.ARMS_UP, now, 3.0)   # happy dance with his arms in the air
             body.hop(now)
             face.add_hearts(now, (0.5, 1.5))
+
+
+def on_reply(robot, reply, now):
+    """Do what the brain's Reply asks for, as he starts saying it."""
+    face, body, wardrobe = robot.face, robot.body, robot.wardrobe
+    body.stop(now, 30, 40)                 # stand still while chatting
+    action = reply.action
+    if reply.feeling == 'praised':
+        robot.mind.complimented()
+        _outfit_feedback(robot, outfits.PRAISED)
+    elif reply.feeling == 'hurt':
+        robot.mind.insulted()
+        _outfit_feedback(robot, outfits.HURT)
+    if reply.user_name:
+        robot.memory.remember_name(reply.user_name)
+    for fact in reply.remember:
+        robot.memory.remember(fact)
+    if action == 'forget':
+        robot.memory.forget(reply.action_arg or 'all')
+    if action in EMOTES:
+        emote(robot, action, now)
     elif action == 'dress_up':
         robot.dress_up(reply.action_arg or None)   # no name: his own pick (not while hacking)
     elif action == 'undress' and not robot.busy_working:
@@ -438,6 +448,8 @@ def on_reply(robot, reply, now):
         robot.stop_showing()
     elif action == 'design_outfit':
         robot.design_outfit(reply.action_arg or '')
+    elif action == 'plugin' and reply.action_arg:
+        robot.use_plugin_tool(reply.action_arg)
 
 
 def on_conversation_ended(robot, last_reply, now):

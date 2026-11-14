@@ -12,7 +12,8 @@ ACTIONS = ('dance', 'dress_up', 'undress', 'nap', 'wave', 'cheer', 'hearts', 'la
            'agent_task',   # action_arg: JSON {"goal": ..., "read": [paths], "write": [paths]}
            'forget',       # action_arg: 'all', or a word: forget the facts that mention it
            'design_outfit',  # action_arg: the idea ('' = his own), done by the AI agent
-           'stop_seeing')  # stop showing him your screen
+           'stop_seeing',  # stop showing him your screen
+           'plugin')       # action_arg: JSON {"tool": name, "args": {...}}: a plugin's tool
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,7 @@ class Context:
     seeing: str = ''                              # you're showing him: 'monitor', 'window', ''
     screen: Optional[bytes] = field(default=None, compare=False, repr=False)  # PNG of it now
     can_see: bool = False                         # showing him your screen would work here
+    plugin_tools: Tuple[str, ...] = ()            # what his plugins can do (one line each)
 
 
 class Brain(ABC):

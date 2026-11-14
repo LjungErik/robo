@@ -1,0 +1,9 @@
+{
+  "id": "game_buddy",
+  "name": "Game buddy",
+  "description": "Robo plays games with you: he watches the game window you share and takes over some or all of the controls. \"Play Minecraft with me\", \"you do the walking\", \"go chop that tree\", \"stop\". He thinks for a few seconds between moves, so slow games suit him best. Only use it in games that allow it: many online games forbid bots.",
+  "version": "1.0",
+  "author": "Robo",
+  "icon": "🎮",
+  "permissions": ["screen", "input", "ai"]
+}

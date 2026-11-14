@@ -115,6 +115,7 @@ class RoboApp:
         self.robot.conversation.battery = platform.battery_percent
         self.robot.conversation.attach(self.brain, voice=platform.speech_output(),
                                        ears=platform.speech_input())
+        self.robot.plugins = self._plugins(platform, store)     # hot-reloadable abilities
 
         idle = platform.idle_monitor()     # always on, so evil mode can be switched on live
         if idle is not None:
@@ -130,6 +131,35 @@ class RoboApp:
             sched.after(DEMO_DELAY, self.robot.demo)
         host.show()
 
+    def _plugins(self, platform, store):
+        """Plugins: robo/plugins/builtin and ~/.config/robo/plugins, each in the sandbox."""
+        from robo.plugins import BUILTIN_DIR, PluginManager, Services
+        manager = None
+        services = Services(self.robot, granted=lambda pid: manager.granted(pid),
+                            input_control=platform.input_control(), camera=platform.camera(),
+                            ai_backend=self._plugin_agent)
+        data = platform.data_dir()
+        manager = PluginManager(
+            platform.sandbox(), os.path.join(data, 'plugins'), services, platform.clock,
+            directories=(BUILTIN_DIR, platform.plugin_dir()),
+            state_file=os.path.join(data, 'plugins.json') if store is not None else None)
+        manager.on_new_plugin = self._new_plugin
+        return manager
+
+    def _plugin_agent(self):
+        """A fresh AI backend for a plugin's question (no chat history)."""
+        from robo.agents import OFF, make_backend
+        s = self.settings
+        if s.agent == OFF:
+            return None
+        return make_backend(s.agent, self.platform.agent_dir(), s.agent_model)
+
+    def _new_plugin(self, manifest):
+        if manifest.folder.startswith(self.platform.plugin_dir()):
+            self.robot.conversation.announce(
+                f'I found a new plugin: {manifest.name}! Switch it on in my settings '
+                'if you want me to use it.', 'surprised')
+
     def _task_agent(self):
         """A fresh agent backend for a task (separate from the one he chats with)."""
         from robo.agents import make_backend
@@ -144,7 +174,8 @@ class RoboApp:
     # ------------------------------------------------------------ settings
     def open_settings(self):
         self.platform.open_settings(self.settings, self.apply, self.robot.memory,
-                                    designs=self.robot.task_env.designs_dir)
+                                    designs=self.robot.task_env.designs_dir,
+                                    plugins=self.robot.plugins)
 
     def apply(self, settings, save=True):
         """Use new settings right away (and remember them)."""
