@@ -51,6 +51,73 @@ def _poses(c):
     return poses
 
 
+HAND_SLOTS = ('front_hand',)     # the far hand's things may hide behind him
+MIN_SHOWING = 0.35         # a prop in a hand must show at least this much
+
+
+def _pixels(draw):
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 240, 280)
+    cr = cairo.Context(surf)
+    cr.translate(120, 250)
+    draw(cr)
+    surf.flush()
+    return memoryview(surf.get_data()).cast('I')
+
+
+def _prop_poses(c):
+    """Where a held prop must show: standing, his move, travelling. (Not walking:
+    the arms swing, so a prop passes behind him for a moment, which is fine.)"""
+    poses = _poses(c)
+    keep = [poses[0]]
+    keep += [p for p in poses if c.move and p.arms == c.move.gesture]
+    keep += [p for p in poses if p.travel]
+    return keep
+
+
+def hidden_props(c):
+    """Problems for props drawn in front_hand (the near hand) that are mostly covered
+    by the robot (the arms are painted behind the body unless the gesture says
+    place: front / over_head). Measured: the prop drawn alone, compared with
+    what changes in the full picture when the prop is left out."""
+    from dataclasses import replace
+    from robo.render.robot import draw_robot
+    d = REGISTRY.design(c.id if c.role == 'base' else '', '' if c.role == 'base' else c.id)
+    own = {s: [fl for fl in d.slots.get(s, ()) if fl[1].startswith(f'{c.id}.layers.')]
+           for s in HAND_SLOTS}
+    problems = []
+    for slot in HAND_SLOTS:
+        if not own[slot]:
+            continue
+        others = {s: [fl for fl in v if fl not in own[slot]] for s, v in d.slots.items()}
+        variants = {'full': d, 'without': replace(d, slots=others),
+                    'alone': replace(d, parts={}, slots={slot: own[slot]})}
+        worst = None
+        for pose in _prop_poses(c):
+            px = {}
+            try:
+                for name, design in variants.items():
+                    REGISTRY._designs[d.key] = design
+                    px[name] = _pixels(lambda cr: draw_robot(cr, pose))
+            finally:
+                REGISTRY._designs[d.key] = d
+            prop = [i for i, v in enumerate(px['alone']) if v >> 24]
+            if len(prop) < 30:             # nothing much drawn in this pose
+                continue
+            showing = sum(1 for i in prop if px['full'][i] != px['without'][i]) / len(prop)
+            name = 'standing' if pose.arms == 'rest' else f'doing {pose.arms}'
+            if pose.travel:
+                name = f'{pose.travel} ({pose.arms})'
+            if showing < MIN_SHOWING and (worst is None or showing < worst[0]):
+                worst = (showing, name)
+        if worst:
+            problems.append(
+                f'layers.{slot}: what he holds is hidden behind his body or head when '
+                f'{worst[1]} (only {worst[0]:.0%} shows). Arms are painted behind the '
+                f'body: give the gesture place: front (or over_head when the arm is '
+                f'raised), and hold the prop further out from the body')
+    return problems
+
+
 def check(paths=(), sheet=True, out=print):
     """Returns the number of problems found."""
     from robo.render.effects import draw_particles
@@ -123,6 +190,8 @@ def check(paths=(), sheet=True, out=print):
                 if REGISTRY.design(c.id if c.role == 'base' else '', c.id).gestures.get(g) is None \
                         and REGISTRY.gesture(g) is None:
                     handler.messages.append(f'gesture {g!r} is not defined in any file')
+            if c.role == 'costume':
+                handler.messages.extend(hidden_props(c))
             msgs = sorted(set(handler.messages))
             problems += len(msgs)
             mark = '✓' if not msgs else '✗'

@@ -82,6 +82,7 @@ class RoboApp:
         self.settings = settings
         self.platform = platform
         self.store = store
+        self._registry_version = REGISTRY.version
         self.robot = Companion(settings, clock=platform.clock)
         host = platform.create_window(self.robot.width, self.robot.height, listener=self.robot)
         self.robot.attach(host)
@@ -163,7 +164,10 @@ class RoboApp:
 
     def _check_character_files(self):
         """Edited a character file? He changes right away (handy while designing one)."""
-        if REGISTRY.reload_if_changed():
+        # (the settings window reloads the registry itself when you import or
+        # remove an outfit, so a new version counts as a change too)
+        if REGISTRY.reload_if_changed() or REGISTRY.version != self._registry_version:
+            self._registry_version = REGISTRY.version
             log.info('character files changed, reloaded')
             self.settings = self.settings.with_changes()       # re-check look / characters
             self.robot.characters_reloaded()
@@ -185,6 +189,11 @@ def designs_dir(platform):
     return os.path.join(characters_dir(platform), 'robo-made')
 
 
+def imported_dir(platform):
+    """Where outfits you import go (~/.config/robo/characters/imported)."""
+    return os.path.join(characters_dir(platform), 'imported')
+
+
 def build_companion(settings, platform):
     """Robot + platform without a settings file (used by tests and previews)."""
     return RoboApp(settings, platform).robot
@@ -200,6 +209,7 @@ def main(argv=None):
         if not files:                          # everything, including your own folder
             REGISTRY.add_directory(characters_dir(load_platform('headless')))
             REGISTRY.add_directory(designs_dir(load_platform('headless')))
+            REGISTRY.add_directory(imported_dir(load_platform('headless')))
         return 1 if check(files) else 0
     platform = load_platform(platform_name)
     if not platform.acquire_single_instance():
@@ -207,6 +217,7 @@ def main(argv=None):
         return 0
     REGISTRY.add_directory(characters_dir(platform))       # your own characters
     REGISTRY.add_directory(designs_dir(platform))          # ...and his own designs
+    REGISTRY.add_directory(imported_dir(platform))         # ...and ones you imported
     store = SettingsStore(platform.config_dir())
     settings = store.load().with_changes(**overrides)
     _set_log_level(settings)

@@ -9,7 +9,7 @@ move: {gesture: roar, mood: roar, seconds: 2.2}
 antenna_y: -122
 
 gestures:
-  roar: {back: "2.6 + sin(t * 22) * 0.2", front: "-2.6 - sin(t * 22) * 0.2"}
+  roar: {back: "2.6 + sin(t * 22) * 0.2", front: "-2.6 - sin(t * 22) * 0.2", place: over_head}
 
 palette:
   steel: "#C3CCDD"

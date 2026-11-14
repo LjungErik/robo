@@ -220,7 +220,27 @@ gestures:
 Angles in radians: 0 = arm hanging down, a positive `back` swings the back arm
 out, a negative `front` lifts the front arm. `place`: `behind` (default),
 `front` (both hands in front of the body) or `over_head` (front arm in front of
-the head). `head_x` slides the head sideways. `robo.yaml` has `rest swing wave
+the head). `head_x` slides the head sideways.
+
+### Holding things (hammers, wands, swords)
+
+Draw a held prop in `layers.front_hand` and stand it upright with
+`rotate: -angle`. It moves with the arm, and the arm is painted **behind the
+body** unless the gesture says otherwise, so a prop can vanish behind the torso
+or head:
+
+- **Standing** (`rest`): the hand hangs at his side, half behind the body. Hold
+  the prop out to the side (`translate: ["7 if arms == 'rest' else 0", 0]`), or
+  let it hang head-down below the hand.
+- **Arm in front of the body**: give the gesture `place: front`.
+- **Arm raised** (a hammer up high, a wand casting a spell): `place: over_head`.
+  Otherwise the head covers it.
+- `travel` gestures need the same care: use one of your own gestures that shows
+  the prop.
+
+The checker measures this: it reports a prop in the near hand that is mostly
+hidden when standing, doing the signature move or travelling. Walking is fine,
+because the arms swing past the body. `robo.yaml` has `rest swing wave
 up scheme fly hover`; any file's gestures can be used by every character.
 
 ## Personality and pastimes
@@ -293,8 +313,9 @@ the checker. None of your files, and no internet. It writes the file, runs the
 checker, looks at the preview picture and improves it. Robo then checks the file
 again himself, and only one that loads and draws without a single problem is
 kept. It goes to `~/.config/robo/characters/robo-made/` and he puts it on right
-away. Edit those files like any other, or remove one in Settings (it goes to
-the trash).
+away. Edit those files like any other, or remove or export one in
+Settings → Characters → Wardrobe (removed ones go to the trash). Outfits other
+people share are imported there too, into `~/.config/robo/characters/imported/`.
 
 ## Particles
 

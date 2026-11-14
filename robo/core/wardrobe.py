@@ -107,7 +107,12 @@ class Wardrobe:
     def refresh(self):
         """The character files were reloaded: pick up the new version of his costume."""
         if self.current is not None:
-            self.current = characters.get(self.current.id) or self.current
+            fresh = characters.get(self.current.id)
+            if fresh is None or fresh.role != 'costume':     # that outfit was removed
+                self.current = self.choice = None
+                self.stop_move()
+            else:
+                self.current = fresh
 
     def stop_move(self):
         self.move_until = 0.0

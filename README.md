@@ -151,6 +151,28 @@ the words you can use to ask for him, and `travel` abilities (fly, hang, telepor
 Every number can be a small expression like `"sin(t * 3) * 6"` for animation.
 The format is described in [`robo/characters/README.md`](robo/characters/README.md).
 
+### The wardrobe: remove, export and import outfits 🧳
+
+**Settings → Characters → Wardrobe** lists every outfit and where it came from
+(Robo designed it, imported, your own file, or comes with Robo).
+
+- **🗑 Remove** takes an outfit away (after asking). The file goes to the trash,
+  so you can get it back. Outfits that come with Robo can't be removed; untick
+  them under *Characters* instead.
+- **📤 Export** saves one outfit as a `.yaml` file to share. **Export all of
+  mine** puts his designs and yours in one `.zip` bundle.
+- **📥 Import outfits…** adds outfits from a `.yaml`/`.json` file or a `.zip`
+  bundle into `~/.config/robo/characters/imported/`. Every outfit is checked and
+  drawn in every pose first; broken ones and ones you already have are skipped
+  (you're told why). A new outfit whose id is taken gets a new one (`pirate_2`).
+  Imported outfits go straight onto his list of characters to wear.
+
+Outfits are only drawings (shapes and small expressions, never code), so a
+shared one can at worst look odd. A bundle is a zip of outfit files plus a
+`robo-outfits.json` manifest (`{"format": "robo-outfits", "version": 1,
+"outfits": [{"id", "name", "file"}]}`); the code is in `robo/design/sharing.py`,
+ready for sharing online later.
+
 ## Talking 🗣️
 
 **Double-click Robo** (or right-click → **Talk to me**) and he says hello,
@@ -378,7 +400,8 @@ robo/
                           README.md describes the format
   design/                 reads them: expr.py (safe expressions), loader.py (one file),
                           registry.py (all files, user folder, hot reload, Designs),
-                          model.py (Character, Move, Travel), check.py (--check)
+                          model.py (Character, Move, Travel), check.py (--check),
+                          sharing.py (wardrobe: remove, export, import outfits)
   core/                   the robot itself, pure Python (no GUI or OS calls)
     companion.py          ties everything together; the only thing the platform talks to
     body.py               position and movement: idle / walk / sleep / drag / fall /

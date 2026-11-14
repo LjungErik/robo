@@ -194,6 +194,7 @@ SECTIONS = (
     ('evil', 'Evil mode', '😈'),
     ('dress', 'Dressing up', '🎭'),
     ('designs', 'His own designs', '✏️'),
+    ('wardrobe', 'Wardrobe', '🧳'),           # no settings: remove, export, import outfits
     ('voice', 'Voice & talking', '🗣️'),
     ('personality', 'Personality', '💛'),
     ('brain', 'AI brain', '🧠'),
@@ -203,7 +204,7 @@ SECTIONS = (
 TABS = (
     # id, title, emoji, the SECTIONS shown on that tab (as cards, in this order)
     ('general', 'General', '🤖', ('robo', 'bubbles', 'advanced')),
-    ('characters', 'Characters', '🎭', ('look', 'dress', 'designs')),
+    ('characters', 'Characters', '🎭', ('look', 'dress', 'designs', 'wardrobe')),
     ('voice', 'Voice', '🗣️', ('voice',)),
     ('personality', 'Personality', '💛', ('personality', 'evil')),
     ('brain', 'AI brain', '🧠', ('brain',)),
@@ -239,7 +240,7 @@ FIELDS = (
           'Now and then, when he has nothing to do, he sits down at his laptop and designs '
           'himself a brand-new outfit with the Claude AI brain (it uses your Claude account). '
           'You can always ask him: "design yourself a disco outfit". Everything he made is '
-          'listed below.'),
+          'in the Wardrobe below, where you can remove or share it.'),
     Field('design_every', 'At most', 'designs', 'seconds', '',
           options=(86400, 2 * 86400, 3 * 86400, 7 * 86400, 14 * 86400),
           depends='design_outfits', fmt=lambda v: 'once a day' if v <= 86400 else

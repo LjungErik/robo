@@ -88,6 +88,184 @@ class InstallTest(_Dirs):
         self.assertNotIn('disco', characters.costume_ids())
 
 
+class HiddenPropTest(unittest.TestCase):
+    """The checker spots a prop in the hand that the body or head covers up."""
+
+    def tearDown(self):
+        REGISTRY.reload()
+
+    def held(self, gesture_place):
+        from robo.design.check import hidden_props
+        from robo.design.loader import parse
+        place = f', place: {gesture_place}' if gesture_place else ''
+        text = textwrap.dedent(f"""\
+            id: hammer_test
+            role: costume
+            move: {{gesture: smash, seconds: 2}}
+            gestures:
+              smash: {{back: 0.4, front: -2.3{place}}}
+            layers:
+              front_hand:
+                - rotate: "-angle"
+                  group:
+                    - {{rect: [-2.5, -12, 5, 24], fill: "#8B5A2B"}}
+                    - {{rect: [-12, -30, 24, 18], r: 3, fill: "#9AA4B2"}}
+            """)
+        import yaml
+        cf = parse(yaml.safe_load(text), 'hammer_test.yaml', 'hammer_test')
+        REGISTRY._ensure()
+        REGISTRY.files['hammer_test'] = cf
+        REGISTRY._designs.clear()
+        return hidden_props(cf.character)
+
+    def test_a_raised_hammer_behind_his_head_is_reported(self):
+        problems = self.held('')
+        self.assertTrue(any('doing smash' in p for p in problems), problems)
+        self.assertIn('over_head', problems[0])
+
+    def test_held_over_his_head_it_shows(self):
+        self.assertFalse([p for p in self.held('over_head') if 'doing smash' in p])
+
+    def test_the_built_in_outfits_hold_their_props_visibly(self):
+        from robo.design.check import hidden_props
+        for cid in characters.costume_ids():
+            c = characters.get(cid)
+            if c.source.startswith(BUILTIN_CHARACTERS):
+                self.assertEqual(hidden_props(c), [], cid)
+
+
+class SharingTest(_Dirs):
+    """Remove, export and import outfits (robo/design/sharing.py)."""
+
+    def setUp(self):
+        super().setUp()
+        from robo.design import sharing
+        root = tempfile.mkdtemp()          # like ~/.config/robo/characters
+        self.addCleanup(shutil.rmtree, root, True)
+        self.designs, self.imported = sharing.folders(root)
+        self.out = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.out, True)
+
+    def made(self, cid='disco', name='Disco Robo'):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        path = os.path.join(d, 'x.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(outfit(cid, name))
+        return install_design(path, self.designs, [])
+
+    def test_the_wardrobe_knows_where_each_outfit_came_from(self):
+        from robo.design import sharing
+        self.made()
+        found = {o.id: o for o in sharing.wardrobe()}
+        self.assertEqual(found['disco'].origin, 'robo')
+        self.assertTrue(found['disco'].removable)
+        self.assertEqual(found['pirate'].origin, 'builtin')
+        self.assertFalse(found['pirate'].removable)
+
+    def test_removing_an_outfit(self):
+        from robo.design import sharing
+        self.made()
+        trash = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, trash, True)
+        sharing.remove(sharing.find('disco'),
+                       trash=lambda p: shutil.move(p, os.path.join(trash, 'disco.yaml')))
+        self.assertNotIn('disco', characters.costume_ids())
+        self.assertEqual(os.listdir(trash), ['disco.yaml'])
+        with self.assertRaises(sharing.ShareError):        # built-in ones stay
+            sharing.remove(sharing.find('pirate'))
+        self.assertIn('pirate', characters.costume_ids())
+
+    def test_without_a_trash_it_is_kept_aside(self):
+        from robo.design import sharing
+        self.made()
+        sharing.remove(sharing.find('disco'))
+        self.assertNotIn('disco', characters.costume_ids())
+        self.assertTrue(os.path.exists(os.path.join(self.designs, '.removed', 'disco.yaml')))
+
+    def test_a_removed_outfit_comes_off(self):
+        from robo.design import sharing
+        self.made()
+        p = HeadlessPlatform()
+        robot = build_companion(Settings(), p)
+        robot.wardrobe.dress_up(p.clock(), 'disco')
+        p.scheduler.advance(1)
+        self.assertEqual(robot.wardrobe.current.id, 'disco')
+        sharing.remove(sharing.find('disco'))
+        robot.characters_reloaded()
+        self.assertIsNone(robot.wardrobe.current)
+
+    def test_export_and_import_one(self):
+        from robo.design import sharing
+        self.made()
+        path = sharing.export(['disco'], os.path.join(self.out, 'disco.robo-outfit.yaml'))
+        with open(path, encoding='utf-8') as f:
+            self.assertTrue(f.readline().startswith('# A Robo outfit: Disco Robo'))
+        sharing.remove(sharing.find('disco'))
+        report = sharing.import_outfits(path, self.imported)
+        self.assertEqual((report.added, report.skipped), (['disco'], []))
+        self.assertEqual(sharing.find('disco').origin, 'imported')
+        self.assertEqual(characters.title('disco'), 'Disco Robo')
+
+    def test_the_same_outfit_twice_is_skipped(self):
+        from robo.design import sharing
+        self.made()
+        path = sharing.export(['disco'], os.path.join(self.out, 'disco.yaml'))
+        report = sharing.import_outfits(path, self.imported)
+        self.assertEqual(report.added, [])
+        self.assertIn('already have it (Disco Robo)', report.summary())
+        self.assertFalse(os.path.exists(self.imported))
+
+    def test_a_different_outfit_with_a_taken_id_is_renamed(self):
+        from robo.design import sharing
+        path = os.path.join(self.out, 'pirate.yaml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(outfit('pirate', 'Space Pirate'))
+        report = sharing.import_outfits(path, self.imported)
+        self.assertEqual(report.added, ['pirate_2'])
+        self.assertEqual(characters.title('pirate'), 'Pirate')
+
+    def test_a_bundle_round_trip(self):
+        import zipfile
+        from robo.design import sharing
+        self.made('disco', 'Disco Robo')
+        self.made('surfer', 'Surfer Robo')
+        bundle = sharing.export(['disco', 'surfer'], os.path.join(self.out, 'mine.zip'))
+        with zipfile.ZipFile(bundle) as z:
+            manifest = json.loads(z.read(sharing.MANIFEST))
+        self.assertEqual(manifest['format'], 'robo-outfits')
+        self.assertEqual([o['id'] for o in manifest['outfits']], ['disco', 'surfer'])
+        for cid in ('disco', 'surfer'):
+            sharing.remove(sharing.find(cid))
+        report = sharing.import_outfits(bundle, self.imported)
+        self.assertEqual(sorted(report.added), ['disco', 'surfer'])
+
+    def test_bad_files_in_a_bundle_are_skipped(self):
+        import zipfile
+        from robo.design import sharing
+        bundle = os.path.join(self.out, 'mixed.zip')
+        with zipfile.ZipFile(bundle, 'w') as z:
+            z.writestr('good.yaml', outfit('disco', 'Disco Robo'))
+            z.writestr('typo.yaml', outfit('oops', 'Oops', broken=True))
+            z.writestr('huge.yaml', 'x' * (sharing.MAX_FILE + 1))
+            z.writestr('../../evil.yaml', outfit('evil_one', 'Evil'))
+            z.writestr('notes.txt', 'hello')
+        report = sharing.import_outfits(bundle, self.imported)
+        self.assertEqual(sorted(report.added), ['disco', 'evil_one'])
+        skipped = dict(report.skipped)
+        self.assertEqual(sorted(skipped), ['huge.yaml', 'typo.yaml'])
+        self.assertEqual(sorted(os.listdir(self.imported)), ['disco.yaml', 'evil_one.yaml'])
+        self.assertFalse(os.path.exists(os.path.join(self.out, '..', 'evil.yaml')))
+
+    def test_not_an_outfit_file(self):
+        from robo.design import sharing
+        path = os.path.join(self.out, 'photo.png')
+        with open(path, 'wb') as f:
+            f.write(b'png')
+        with self.assertRaises(sharing.ShareError):
+            sharing.import_outfits(path, self.imported)
+
+
 class ToolServerTest(unittest.TestCase):
     def test_look_at_image(self):
         root = tempfile.mkdtemp()

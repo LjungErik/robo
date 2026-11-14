@@ -19,10 +19,8 @@ costume and draws without a single problem is installed, into
 (shapes and small expressions, never code), so a design can at worst look
 odd. Nothing to review, nothing of yours involved, so it doesn't ask first.
 """
-import io
 import logging
 import os
-import re
 import shutil
 import time
 
@@ -63,13 +61,17 @@ input/outfit-kit/examples/ (robo.yaml is the robot you draw on: read its coordin
 3. Write it to files/results/<id>.yaml as a costume. Include: `words` (what people say \
 to ask for it), `wear` (two to four situations it suits, from the README), a `move` \
 (signature move, with gestures you define or ones from the examples), a `demand` \
-icon, `layers` that make it instantly recognisable even at small size, and a short \
+icon, `layers` that make it instantly recognisable even at small size (anything he \
+holds goes in front_hand; read "Holding things" in the README so it isn't hidden \
+behind his body or head), and a short \
 `personality` (speech, a few traits, two or three `lines` of each of: dressed_up, \
 remark, bored).
 4. Run: python3 input/outfit-kit/check.py files/results/<id>.yaml \
 and fix every problem it reports until it says ok.
 5. Look at files/results/<id>.preview.png with look_at_image. Is it cute, clear and \
 well placed in every pose (walking, sitting, flying, evil)? Improve it and check again.
+It must be a new idea, not a variation: nothing in taken.txt may be the same kind of \
+character (no second weather god, detective or duck under another name).
 Only one outfit. When you're done, say in one or two spoken sentences what you made \
 and what you call it, as Robo, excited."""
 
@@ -175,55 +177,12 @@ class DesignTask(AgentTask):
 def install_design(path, designs_dir, problems, idea=''):
     """Check a design and copy it into designs_dir. Returns its id, or None
     (and the reason in `problems`)."""
-    from robo.design import REGISTRY
-    from robo.design.check import check
-    from robo.design.loader import LoadError, load_file
-
-    try:
-        with open(path, encoding='utf-8') as f:
-            text = f.read()
-        if len(text) > 200_000:
-            raise LoadError('the file is too big')
-        character = load_file(path).character
-    except (OSError, UnicodeDecodeError, LoadError) as e:
-        problems.append(str(e))
-        return None
-    if character.role != 'costume':
-        problems.append(f'{character.id} is a {character.role}, not a costume')
-        return None
-    out = io.StringIO()
-    where = os.path.dirname(os.path.abspath(path))
-    had = where in REGISTRY.directories
-    try:
-        n = check([path], sheet=False, out=lambda line: out.write(line + '\n'))
-    finally:
-        if not had:                    # check() adds the file's folder: take it out again
-            REGISTRY.directories[:] = [d for d in REGISTRY.directories if d != where]
-    if n:
-        lines = [l.strip() for l in out.getvalue().splitlines() if l.strip()]
-        problems.append(lines[-1] if lines else 'it did not draw cleanly')
-        REGISTRY.reload()
-        return None
-    REGISTRY.add_directory(designs_dir)
-    cid = re.sub(r'[^a-z0-9_]', '_', character.id.lower()).strip('_') or 'outfit'
-    REGISTRY.reload()
-    base, k = cid, 2
-    while REGISTRY.get(cid) is not None:
-        cid, k = f'{base}_{k}', k + 1
-    if cid != character.id:
-        text = re.sub(r'^id:.*$', f'id: {cid}', text, count=1, flags=re.M)
-        if not re.search(r'^id:', text, flags=re.M):
-            text = f'id: {cid}\n' + text
+    from robo.design.sharing import install
     stamp = time.strftime('%Y-%m-%d')
     header = f'# Designed by Robo himself on {stamp}' + (f' ({idea})' if idea else '') + '.\n'
-    os.makedirs(designs_dir, exist_ok=True)
-    target = os.path.join(designs_dir, f'{cid}.yaml')
-    tmp = target + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        f.write(header + text)
-    os.replace(tmp, target)
-    REGISTRY.reload()
-    log.info('installed his own design %s (%s)', cid, target)
+    cid = install(path, designs_dir, problems, header=header)
+    if cid:
+        log.info('installed his own design %s', cid)
     return cid
 
 

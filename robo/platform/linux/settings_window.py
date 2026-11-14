@@ -28,6 +28,7 @@ from robo.core.bubble import Bubble  # noqa: E402
 from robo.core import characters  # noqa: E402
 from robo.core.effects import Effects  # noqa: E402
 from robo.core.pose import Pose  # noqa: E402
+from robo.design import sharing  # noqa: E402
 from robo.render.robot import draw_robot  # noqa: E402
 from robo.render.scene import draw_frame  # noqa: E402
 from robo.render.settings_icon import draw_gear, settings_icon_surface  # noqa: E402
@@ -167,6 +168,12 @@ def _gear(cr, cx, cy, r, teeth, angle, color):
     draw_gear(cr, cx, cy, r, teeth, angle, color, hole=BG_BOTTOM)
 
 
+def _documents():
+    """Where export / import dialogs start: your Documents folder (or home)."""
+    path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)
+    return path if path and os.path.isdir(path) else os.path.expanduser('~')
+
+
 def _window_icons():
     """Robo's face with a gear, at the sizes window managers like."""
     icons = []
@@ -179,8 +186,9 @@ def _window_icons():
 class _Control:
     """One setting's widgets: how to read it, write it, and its row."""
 
-    def __init__(self, row, get, set_):
+    def __init__(self, row, get, set_, flow=None):
         self.row, self.get, self.set = row, get, set_
+        self.flow = flow             # character chips: rebuilt when outfits change
 
 
 class SettingsWindow:
@@ -196,7 +204,7 @@ class SettingsWindow:
         self.memory = None
         self._memory_box = None
         self.designs_dir = None
-        self._designs_box = None
+        self._wardrobe_box = None
         self._model_combos = {}
         self._agent_for_models = ''
         self._picking = False
@@ -214,7 +222,7 @@ class SettingsWindow:
         if self.win is None:
             self._build()
         self._show_memory()
-        self._show_designs()
+        self._show_wardrobe()
         self.applied = settings
         self._show_usage()
         if getattr(self, '_usage_timer', None) is None:      # keep it current while open
@@ -278,6 +286,10 @@ class SettingsWindow:
             getattr(content, f'set_margin_{side}')(18)
         empty = True
         for sid in section_ids:
+            if sid == 'wardrobe':                  # not settings: outfits to manage
+                content.pack_start(self._wardrobe_card(*titles[sid]), False, False, 0)
+                empty = False
+                continue
             fields = [f for f in FIELDS if f.section == sid]
             if fields:
                 empty = False
@@ -327,9 +339,6 @@ class SettingsWindow:
             if f.kind == 'memory':                # ...and what he remembers, to erase
                 self._memory_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
                 row.pack_end(self._memory_box, False, False, 0)
-            elif f.kind == 'designs':             # ...and what he made, to remove
-                self._designs_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-                row.pack_end(self._designs_box, False, False, 0)
         elif f.kind in ('float', 'seconds'):
             control = self._slider(f, row, top)
         elif f.kind == 'characters':
@@ -582,37 +591,247 @@ class SettingsWindow:
         box.pack_start(bar, False, False, 0)
         return box
 
-    def _show_designs(self):
-        """The outfits he designed himself, each with a button to throw it away."""
-        from robo.tasks.design_task import designs
-        box = self._designs_box
+    # ------------------------------------------------------------ wardrobe
+    def _wardrobe_card(self, title, emoji):
+        """Every outfit, each with Export and Remove; Import / Export all on top."""
+        card = _style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10), 'robo-card')
+        card.pack_start(_style(Gtk.Label(label=f'{emoji}  {title}', xalign=0),
+                               'robo-card-title'), False, False, 0)
+        hint = _style(Gtk.Label(xalign=0, label=(
+            "Remove outfits you don't want, or share them: Export makes a file a friend "
+            'can Import. Imported outfits are checked first; outfits are only drawings, '
+            'never programs.')), 'robo-help')
+        hint.set_line_wrap(True)
+        card.pack_start(hint, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        imp = _style(Gtk.Button(label='📥  Import outfits…'), 'robo-secondary')
+        imp.set_tooltip_text('Add outfits from a .yaml file or a .zip bundle')
+        imp.connect('clicked', lambda *_: self._import_outfits())
+        self._export_all = _style(Gtk.Button(label='📤  Export all of mine…'),
+                                  'robo-secondary')
+        self._export_all.set_tooltip_text('His own designs and the ones you added, '
+                                          'in one .zip bundle')
+        self._export_all.connect('clicked', lambda *_: self._export_outfits(
+            [o.id for o in sharing.wardrobe() if o.removable]))
+        buttons.pack_start(imp, False, False, 0)
+        buttons.pack_start(self._export_all, False, False, 0)
+        card.pack_start(buttons, False, False, 0)
+        self._import_btn = imp
+        self._wardrobe_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        card.pack_start(self._wardrobe_box, False, False, 0)
+        return card
+
+    def _show_wardrobe(self):
+        box = self._wardrobe_box
         if box is None:
             return
         for child in box.get_children():
             box.remove(child)
-        made = designs(self.designs_dir) if self.designs_dir else []
-        if not made:
-            box.pack_start(_style(Gtk.Label(label="He hasn't designed anything yet.",
-                                            xalign=0), 'robo-help'), False, False, 0)
-        for cid, path in made:
-            line = Gtk.Box(spacing=6)
-            line.pack_start(Gtk.Label(label='• ' + characters.title(cid), xalign=0),
-                            True, True, 0)
-            x = Gtk.Button(label='✕')
-            x.set_relief(Gtk.ReliefStyle.NONE)
-            x.set_tooltip_text('Throw this outfit away (it goes to the trash)')
-            x.connect('clicked', lambda *_a, p=path: self._discard_design(p))
-            line.pack_end(x, False, False, 0)
-            box.pack_start(line, False, False, 0)
+        everything = sharing.wardrobe()
+        mine = [o for o in everything if o.removable]
+        builtin = [o for o in everything if not o.removable]
+        self._export_all.set_sensitive(bool(mine))
+        self._import_btn.set_sensitive(self._imported_dir() is not None)
+        if not mine:
+            box.pack_start(_style(Gtk.Label(
+                label='No outfits of his own or yours yet: only the ones he comes with.',
+                xalign=0), 'robo-help'), False, False, 0)
+        for o in sorted(mine, key=lambda o: o.title.lower()):
+            box.pack_start(self._outfit_row(o), False, False, 0)
+        if builtin:
+            more = Gtk.Expander(label=f'Comes with Robo ({len(builtin)})')
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            for o in builtin:
+                inner.pack_start(self._outfit_row(o), False, False, 0)
+            more.add(inner)
+            box.pack_start(more, False, False, 4)
         box.show_all()
 
-    def _discard_design(self, path):
+    def _outfit_row(self, o):
+        line = Gtk.Box(spacing=8)
+        art = Gtk.DrawingArea()
+        art.set_size_request(34, 40)
+        art.connect('draw', self._draw_mini, o.id)
+        line.pack_start(art, False, False, 0)
+        names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
+        names.pack_start(_style(Gtk.Label(label=o.title, xalign=0), 'robo-row-label'),
+                         False, False, 0)
+        names.pack_start(_style(Gtk.Label(label=o.origin_words, xalign=0), 'robo-help'),
+                         False, False, 0)
+        line.pack_start(names, True, True, 0)
+        remove = Gtk.Button(label='🗑 Remove')
+        remove.set_relief(Gtk.ReliefStyle.NONE)
+        if o.removable:
+            remove.set_tooltip_text(f'Remove {o.title} (it goes to the trash)')
+            remove.connect('clicked', lambda *_: self._remove_outfit(o))
+        else:
+            remove.set_sensitive(False)
+            remove.set_tooltip_text('Comes with Robo, so it stays. Untick it under '
+                                    'Characters if he shouldn\'t wear it.')
+        export = Gtk.Button(label='📤 Export')
+        export.set_relief(Gtk.ReliefStyle.NONE)
+        export.set_tooltip_text(f'Export {o.title} to a file you can share')
+        export.connect('clicked', lambda *_: self._export_outfits([o.id]))
+        line.pack_end(remove, False, False, 0)
+        line.pack_end(export, False, False, 0)
+        return line
+
+    def _draw_mini(self, widget, cr, cid):
+        if characters.get(cid) is None:
+            return False
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        s = (h - 2) / 165
+        cr.save()
+        cr.translate(w / 2, h - 1)
+        cr.scale(s, s)
+        draw_robot(cr, Pose(t=0.3, costume=cid))
+        cr.restore()
+        return False
+
+    def _imported_dir(self):
+        if not self.designs_dir:
+            return None
+        return sharing.folders(os.path.dirname(self.designs_dir))[1]
+
+    def _remove_outfit(self, o):
+        ask = Gtk.MessageDialog(transient_for=self.win, modal=True,
+                                message_type=Gtk.MessageType.QUESTION,
+                                buttons=Gtk.ButtonsType.NONE, text=f'Remove {o.title}?')
+        ask.format_secondary_text('It goes to the trash, so you can still get it back '
+                                  'from there.')
+        ask.add_button('Keep it', Gtk.ResponseType.CANCEL)
+        ask.add_button('Remove', Gtk.ResponseType.OK)
+        ask.set_default_response(Gtk.ResponseType.CANCEL)
+        answer = ask.run()
+        ask.destroy()
+        if answer != Gtk.ResponseType.OK:
+            return
         from gi.repository import Gio
+
+        def trash(path):
+            try:
+                Gio.File.new_for_path(path).trash(None)
+            except GLib.Error:                 # no trash here: sharing keeps a copy
+                sharing.remove(o)
         try:
-            Gio.File.new_for_path(path).trash(None)
-        except GLib.Error as e:
-            self._set_status(f'Could not remove it: {e.message}')
-        self._show_designs()
+            if os.path.exists(o.path):
+                sharing.remove(o, trash=trash)
+        except (OSError, sharing.ShareError) as e:
+            self._set_status(f'Could not remove it: {e}')
+            return
+        self._outfits_changed()
+        self._flash(f'Removed {o.title} 🗑')
+
+    def _export_outfits(self, ids):
+        if not ids:
+            return
+        dialog = Gtk.FileChooserDialog(title='Export outfits' if len(ids) > 1 else
+                                       f'Export {characters.title(ids[0])}',
+                                       transient_for=self.win,
+                                       action=Gtk.FileChooserAction.SAVE)
+        dialog.add_buttons('Cancel', Gtk.ResponseType.CANCEL, 'Export', Gtk.ResponseType.OK)
+        dialog.set_do_overwrite_confirmation(True)
+        dialog.set_current_folder(_documents())
+        dialog.set_current_name(sharing.suggested_name(ids))
+        answer, path = dialog.run(), dialog.get_filename()
+        dialog.destroy()
+        if answer != Gtk.ResponseType.OK or not path:
+            return
+        if len(ids) > 1 and not path.lower().endswith('.zip'):
+            path += '.zip'
+        try:
+            sharing.export(ids, path)
+        except (OSError, sharing.ShareError) as e:
+            self._set_status(f'Could not export: {e}')
+            return
+        what = f'{len(ids)} outfits' if len(ids) > 1 else characters.title(ids[0])
+        self._flash(f'Exported {what} to {os.path.basename(path)} ✓')
+
+    def _import_outfits(self):
+        folder = self._imported_dir()
+        if folder is None:
+            return
+        dialog = Gtk.FileChooserDialog(title='Import outfits', transient_for=self.win,
+                                       action=Gtk.FileChooserAction.OPEN)
+        dialog.add_buttons('Cancel', Gtk.ResponseType.CANCEL, 'Import', Gtk.ResponseType.OK)
+        dialog.set_select_multiple(True)
+        dialog.set_current_folder(_documents())
+        kinds = Gtk.FileFilter()
+        kinds.set_name('Robo outfits (.yaml, .json, .zip)')
+        for pattern in ('*.yaml', '*.yml', '*.json', '*.zip'):
+            kinds.add_pattern(pattern)
+        dialog.add_filter(kinds)
+        answer, paths = dialog.run(), dialog.get_filenames()
+        dialog.destroy()
+        if answer != Gtk.ResponseType.OK or not paths:
+            return
+        self._set_status('Checking the outfits…')
+        report = sharing.Report()
+        for path in paths:
+            while Gtk.events_pending():        # let the status show (checking draws a lot)
+                Gtk.main_iteration()
+            try:
+                one = sharing.import_outfits(path, folder)
+            except (OSError, ValueError) as e:
+                report.skipped.append((os.path.basename(path), str(e)))
+                continue
+            report.added += one.added
+            report.skipped += one.skipped
+        self._outfits_changed(added=tuple(report.added))
+        if report.skipped:
+            info = Gtk.MessageDialog(transient_for=self.win, modal=True,
+                                     message_type=Gtk.MessageType.INFO,
+                                     buttons=Gtk.ButtonsType.OK,
+                                     text=f'Imported {len(report.added)} of '
+                                          f'{len(report.added) + len(report.skipped)}')
+            info.format_secondary_text(report.summary())
+            info.run()
+            info.destroy()
+        self._flash(f'Imported {len(report.added)} outfit'
+                    f'{"" if len(report.added) == 1 else "s"} ✓' if report.added
+                    else 'Nothing new was imported')
+
+    def _outfits_changed(self, added=()):
+        """Outfits were imported or removed: redraw the lists, and let him wear new ones."""
+        values = {k: c.get() for k, c in self.controls.items()}
+        if 'characters' in values:
+            values['characters'] = tuple(values['characters']) + tuple(added)
+        self._rebuild_chips()
+        applied = self.applied.with_changes(characters=self.applied.characters + tuple(added))
+        if applied != self.applied:            # new ones may be worn, gone ones not
+            self.on_apply(applied)
+            self.applied = applied
+        if self.snapshot is not None:
+            self.snapshot = self.snapshot.with_changes(
+                characters=self.snapshot.characters + tuple(added))
+        self._loading = True
+        try:
+            for key, value in values.items():
+                self.controls[key].set(value)
+        finally:
+            self._loading = False
+        self._show_wardrobe()
+        self._refresh()
+
+    def _rebuild_chips(self):
+        for key, make in (('characters', self._character_chips), ('look', self._look_chips)):
+            old = self.controls.get(key)
+            if old is None or old.flow is None:
+                continue
+            row = old.row
+            pos = row.get_children().index(old.flow)
+            self._chip_art = [a for a in self._chip_art if not a.is_ancestor(old.flow)]
+            row.remove(old.flow)
+            new = make(row)
+            row.reorder_child(new.flow, pos)
+            new.flow.show_all()
+            self.controls[key] = new
+
+    def _flash(self, text):
+        self._set_status(text)
+        if self._status_timer:
+            GLib.source_remove(self._status_timer)
+        self._status_timer = GLib.timeout_add(3500, self._clear_status)
 
     def _chip_flow(self):
         flow = Gtk.FlowBox()
@@ -659,7 +878,7 @@ class SettingsWindow:
         def set_(value):
             for c, b in chips.items():
                 b.set_active(c in value)
-        return _Control(row, get, set_)
+        return _Control(row, get, set_, flow)
 
     def _look_chips(self, row):
         """Pick exactly one: what Robo looks like the rest of the time."""
@@ -700,7 +919,7 @@ class SettingsWindow:
                     b.set_active(c == chosen['id'])
             finally:
                 self._picking = False
-        return _Control(row, get, set_)
+        return _Control(row, get, set_, flow)
 
     def _action_bar(self):
         bar = _style(Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8), 'robo-actions')
